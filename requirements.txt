@@ -1,0 +1,27 @@
+# ===================================
+# INTRADAY TRADING BOT DEPENDENCIES
+# ===================================
+
+# Angel One API
+smartapi-python>=1.3.6
+pyotp>=2.9.0
+websocket-client>=1.6.0
+logzero>=1.7.0
+
+# Data Processing & Analysis
+pandas>=2.0.0
+numpy>=1.24.0
+ta>=0.11.0                    # Technical Analysis (RSI, VWAP, etc.)
+
+# API Server (for Dashboard)
+flask>=3.0.0
+flask-cors>=4.0.0
+
+# Scheduling
+schedule>=1.2.0
+python-dateutil>=2.8.0
+
+# Utilities
+python-dotenv>=1.0.0
+requests>=2.31.0
+loguru>=0.7.0
