@@ -345,12 +345,32 @@ def create_app() -> Flask:
     return app
 
 
-def run_server(host: str = '127.0.0.1', port: int = 5000, debug: bool = False):
-    """Run the Flask server"""
+def run_server(host: str = None, port: int = 5000, debug: bool = False):
+    """
+    Run the Flask server.
+    
+    Args:
+        host: Host to bind to. Defaults to:
+              - '0.0.0.0' (public) if DASHBOARD_PUBLIC=true in env
+              - '127.0.0.1' (local only) otherwise
+        port: Port number (default 5000)
+        debug: Enable debug mode
+    """
+    import os
+    
+    # Allow public access if DASHBOARD_PUBLIC=true or host explicitly set to 0.0.0.0
+    if host is None:
+        is_public = os.environ.get('DASHBOARD_PUBLIC', 'false').lower() == 'true'
+        host = '0.0.0.0' if is_public else '127.0.0.1'
+    
     app = create_app()
     
-    logger.info(f"🌐 Starting API server at http://{host}:{port}")
-    logger.info(f"📊 Dashboard available at http://{host}:{port}/")
+    if host == '0.0.0.0':
+        logger.info(f"🌐 Starting API server at http://0.0.0.0:{port} (PUBLIC ACCESS)")
+        logger.info(f"📊 Dashboard accessible from any device on your network")
+    else:
+        logger.info(f"🌐 Starting API server at http://{host}:{port}")
+        logger.info(f"📊 Dashboard available at http://{host}:{port}/")
     
     app.run(host=host, port=port, debug=debug, threaded=True)
 

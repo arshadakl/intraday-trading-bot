@@ -199,7 +199,14 @@ class StockScorer:
             
             return {
                 'symbol': data.get('symbol', 'UNKNOWN'),
+                'token': data.get('token'),  # Essential for WebSocket subscription
+                'name': data.get('name', data.get('symbol', 'UNKNOWN')),
                 'close': data.get('close', 0),
+                'ltp': data.get('ltp', data.get('close', 0)),  # Last traded price
+                'vwap': data.get('vwap', data.get('close', 0)),
+                'sma_20': data.get('sma_20', 0),
+                'ema_9': data.get('ema_9', 0),
+                'ema_21': data.get('ema_21', 0),
                 'volatility_score': round(volatility_score, 2),
                 'volume_score': round(volume_score, 2),
                 'trend_score': round(trend_score, 2),

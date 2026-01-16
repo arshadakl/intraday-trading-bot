@@ -45,6 +45,7 @@ class PaperTrader:
     """
     Simulates trading without real money. 
     Tracks positions, P&L, and trade history.
+    Positions are persisted to JSON to survive restarts.
     """
     
     def __init__(self, initial_balance: float = 100000.0):
@@ -53,13 +54,89 @@ class PaperTrader:
         self.positions: Dict[str, PaperPosition] = {}
         self.trades: List[PaperTrade] = []
         self.daily_pnl = 0.0
-        self. trade_count = 0
+        self.trade_count = 0
         
         # Create data directory
         self.data_dir = Path("data/paper_trades")
         self.data_dir.mkdir(parents=True, exist_ok=True)
         
+        # Position persistence file
+        self.positions_file = self.data_dir / "open_positions.json"
+        
+        # Load persisted positions on startup
+        self._load_positions()
+        
         logger.info(f"Paper Trader initialized with balance: ₹{initial_balance:,.2f}")
+    
+    def _save_positions(self) -> None:
+        """Save open positions to JSON file for persistence"""
+        try:
+            positions_data = {
+                'updated_at': datetime.now().isoformat(),
+                'available_balance': self.available_balance,
+                'daily_pnl': self.daily_pnl,
+                'positions': {
+                    symbol: {
+                        'symbol': pos.symbol,
+                        'token': pos.token,
+                        'entry_price': pos.entry_price,
+                        'quantity': pos.quantity,
+                        'entry_time': pos.entry_time.isoformat(),
+                        'stop_loss': pos.stop_loss,
+                        'target': pos.target,
+                        'current_price': pos.current_price
+                    }
+                    for symbol, pos in self.positions.items()
+                }
+            }
+            
+            with open(self.positions_file, 'w') as f:
+                json.dump(positions_data, f, indent=2)
+            
+            logger.debug(f"💾 Positions saved to {self.positions_file}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error saving positions: {e}")
+    
+    def _load_positions(self) -> None:
+        """Load persisted positions from JSON file on startup"""
+        if not self.positions_file.exists():
+            logger.info("📂 No persisted positions found - starting fresh")
+            return
+        
+        try:
+            with open(self.positions_file, 'r') as f:
+                data = json.load(f)
+            
+            # Restore balance and P&L
+            self.available_balance = data.get('available_balance', self.initial_balance)
+            self.daily_pnl = data.get('daily_pnl', 0.0)
+            
+            # Restore positions
+            positions_data = data.get('positions', {})
+            for symbol, pos_data in positions_data.items():
+                position = PaperPosition(
+                    symbol=pos_data['symbol'],
+                    token=pos_data['token'],
+                    entry_price=pos_data['entry_price'],
+                    quantity=pos_data['quantity'],
+                    entry_time=datetime.fromisoformat(pos_data['entry_time']),
+                    stop_loss=pos_data['stop_loss'],
+                    target=pos_data['target'],
+                    current_price=pos_data.get('current_price', pos_data['entry_price'])
+                )
+                self.positions[symbol] = position
+            
+            if self.positions:
+                logger.success(f"📂 Loaded {len(self.positions)} persisted position(s)")
+                for symbol, pos in self.positions.items():
+                    logger.info(f"   └─ {symbol}: {pos.quantity} @ ₹{pos.entry_price:.2f}")
+            else:
+                logger.info("📂 No open positions to restore")
+                
+        except Exception as e:
+            logger.error(f"❌ Error loading positions: {e}")
+            logger.info("Starting with fresh position state")
     
     def set_balance(self, balance: float) -> None:
         """Set the paper trading balance"""
@@ -119,6 +196,9 @@ class PaperTrader:
         self.available_balance -= order_value
         self.trade_count += 1
         
+        # Persist positions to JSON
+        self._save_positions()
+        
         logger.success(
             f"[PAPER] BUY {quantity} {symbol} @ ₹{executed_price:.2f} (slippage: {slippage_percent*100:.2f}%) | "
             f"SL: ₹{stop_loss:.2f} | Target: ₹{target:.2f}"
@@ -163,6 +243,9 @@ class PaperTrader:
         
         # Remove position
         del self.positions[symbol]
+        
+        # Persist updated positions to JSON
+        self._save_positions()
         
         pnl_symbol = "+" if pnl >= 0 else ""
         logger.success(

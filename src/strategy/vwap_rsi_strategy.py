@@ -73,33 +73,52 @@ class VWAPRSIStrategy(BaseStrategy):
         vwap = indicators.get('vwap', current_price)
         volume_ratio = indicators.get('volume_ratio', 1)
         
+        # Initialize previous price tracking for NEW symbols
+        # Set initial prev_price below VWAP to detect first-tick-above-VWAP scenario
+        is_first_tick = symbol not in self.previous_prices
+        if is_first_tick:
+            # Initialize with VWAP as reference - if current price is above, we treat it as a potential entry
+            self.previous_prices[symbol] = vwap  # Use VWAP as baseline
+            self.previous_vwap[symbol] = vwap
+        
         # Get previous price for crossover detection
-        prev_price = self.previous_prices.get(symbol, current_price)
+        prev_price = self.previous_prices.get(symbol, vwap)
         prev_vwap = self.previous_vwap.get(symbol, vwap)
         
-        # Update tracking
+        # Update tracking AFTER getting previous values
         self.previous_prices[symbol] = current_price
         self.previous_vwap[symbol] = vwap
         
         # ============ ENTRY CONDITIONS ============
         
-        # 1. Price crosses ABOVE VWAP (bullish crossover) - MANDATORY
+        # 1a. Price crosses ABOVE VWAP (bullish crossover)
         price_crossed_above_vwap = prev_price <= prev_vwap and current_price > vwap
         
-        # 2. RSI in neutral zone (40-60)
+        # 1b. OR price is already above VWAP on first tick (stock opened above VWAP)
+        first_tick_above_vwap = is_first_tick and current_price > vwap
+        
+        # 1c. Price is currently above VWAP (for momentum confirmation)
+        price_above_vwap = current_price > vwap
+        
+        # 2. RSI in neutral zone (40-60) - not overbought/oversold
         rsi_in_range = self.rsi_oversold <= rsi <= self.rsi_overbought
         
-        # 3. Volume is above average
-        volume_confirmed = volume_ratio > 1.0
+        # 3. Volume is above average (liquidity check)
+        # Relaxed: accept volume_ratio >= 0.8 instead of strict > 1.0
+        volume_confirmed = volume_ratio >= 0.8
         
-        # Log conditions for debugging
-        logger.debug(
-            f"{symbol}: Price=${current_price:.2f}, VWAP=${vwap:.2f}, "
-            f"RSI={rsi:.1f}, VolRatio={volume_ratio:.2f}, Crossover={price_crossed_above_vwap}"
-        )
+        # Log conditions for debugging (always log, not just debug)
+        if price_above_vwap:
+            logger.info(
+                f"📊 {symbol}: LTP=₹{current_price:.2f}, VWAP=₹{vwap:.2f}, "
+                f"RSI={rsi:.1f}, Vol={volume_ratio:.2f}, "
+                f"Crossover={price_crossed_above_vwap}, FirstTick={is_first_tick}"
+            )
         
-        # CROSSOVER IS NOW MANDATORY - prevents false entries when price hovers above VWAP
-        if price_crossed_above_vwap and rsi_in_range and volume_confirmed:
+        # ENTRY TRIGGER: Crossover OR first-tick-above-VWAP, with RSI and volume confirmation
+        should_enter = (price_crossed_above_vwap or first_tick_above_vwap) and rsi_in_range and volume_confirmed
+        
+        if should_enter:
             # Calculate entry points with ATR for dynamic risk management
             atr = indicators.get('atr', 0)
             entry_points = self.calculate_entry_points({
@@ -108,9 +127,11 @@ class VWAPRSIStrategy(BaseStrategy):
                 'atr': atr  # Pass ATR for dynamic SL/Target
             })
             
+            entry_reason = "VWAP Crossover" if price_crossed_above_vwap else "Above VWAP Entry"
+            
             logger.info(
                 f"📈 ENTRY SIGNAL: {symbol} | "
-                f"VWAP Crossover | RSI={rsi:.1f} | VolRatio={volume_ratio:.2f} | ATR={atr:.2f}"
+                f"{entry_reason} | RSI={rsi:.1f} | VolRatio={volume_ratio:.2f} | ATR={atr:.2f}"
             )
             
             return {
@@ -118,7 +139,7 @@ class VWAPRSIStrategy(BaseStrategy):
                 'entry_price': current_price,
                 'stop_loss': entry_points['stop_loss'],
                 'target': entry_points['target_price'],
-                'reason': 'VWAP Crossover',
+                'reason': entry_reason,
                 'indicators': {
                     'rsi': rsi,
                     'vwap': vwap,

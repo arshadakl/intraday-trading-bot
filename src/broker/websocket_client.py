@@ -37,7 +37,7 @@ class AngelWebSocket:
         
         # Reconnection settings
         self._reconnect_attempts = 0
-        self._max_reconnect_attempts = 3
+        self._max_reconnect_attempts = 10  # Increased for better resilience
     
     def connect(self) -> bool:
         """Connect to WebSocket"""
@@ -126,7 +126,7 @@ class AngelWebSocket:
         # Auto-reconnect logic with exponential backoff
         if self._reconnect_attempts < self._max_reconnect_attempts:
             self._reconnect_attempts += 1
-            wait_time = min(5 * self._reconnect_attempts, 30)  # Max 30 seconds
+            wait_time = min(5 * self._reconnect_attempts, 60)  # Max 60 seconds
             logger.info(f"🔄 Attempting reconnect in {wait_time}s (attempt {self._reconnect_attempts}/{self._max_reconnect_attempts})")
             
             import time
@@ -138,7 +138,13 @@ class AngelWebSocket:
             else:
                 logger.error("📡 Reconnection failed - will retry")
         else:
-            logger.error(f"📡 Max reconnection attempts ({self._max_reconnect_attempts}) reached. Giving up.")
+            logger.error(f"📡 Max reconnection attempts ({self._max_reconnect_attempts}) reached.")
+            logger.info("💡 TIP: Restart the bot to try reconnecting")
+    
+    def reset_reconnect_counter(self) -> None:
+        """Reset reconnection counter to allow fresh retry attempts"""
+        self._reconnect_attempts = 0
+        logger.info("🔄 WebSocket reconnection counter reset")
     
     def subscribe(self, tokens: List[Dict]) -> bool:
         """
@@ -231,6 +237,7 @@ class AngelWebSocket:
         for t in self.subscribed_tokens:
             if t.get('token') == token:
                 return t.get('symbol', token)
+        logger.warning(f"⚠️ No symbol mapping found for token: {token}")
         return token
     
     def set_symbol_mapping(self, token: str, symbol: str) -> None:

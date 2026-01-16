@@ -107,9 +107,10 @@ class BaseStrategy(ABC):
         Returns:
             True if still in volatility period
         """
+        from datetime import timedelta
         now = datetime.now()
         market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
-        buffer_end = market_open.replace(minute=market_open.minute + start_buffer)
+        buffer_end = market_open + timedelta(minutes=start_buffer)
         return now < buffer_end
     
     def activate(self) -> None:

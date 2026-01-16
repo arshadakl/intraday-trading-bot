@@ -163,6 +163,10 @@ class TradingBot:
             )
             self.position_tracker = PositionTracker()
             
+            # 8. Sync persisted positions from paper_trader to position_tracker
+            if self.config.is_paper_mode and self.paper_trader:
+                self._sync_positions_from_paper_trader()
+            
             self.status = "READY"
             logger.success("✅ Bot initialized successfully!")
             self._log_activity("SYSTEM", "Bot initialized successfully")
@@ -184,6 +188,48 @@ class TradingBot:
             fixed = self.config.get("capital. fixed_amount") or total_balance
             return min(fixed, total_balance)
     
+    def _sync_positions_from_paper_trader(self) -> None:
+        """Sync persisted positions from paper_trader to position_tracker on startup"""
+        if not self.paper_trader or not self.position_tracker:
+            return
+        
+        # Get positions from paper_trader (already loaded from JSON)
+        paper_positions = self.paper_trader.get_positions()
+        
+        if not paper_positions:
+            logger.info("📂 No positions to sync from paper_trader")
+            return
+        
+        logger.info(f"🔄 Syncing {len(paper_positions)} position(s) from paper_trader to position_tracker")
+        
+        for pos in paper_positions:
+            self.position_tracker.add_position(
+                symbol=pos['symbol'],
+                token=pos['token'],
+                entry_price=pos['entry_price'],
+                quantity=pos['quantity'],
+                stop_loss=pos['stop_loss'],
+                target=pos['target']
+            )
+            
+            # Also add to selected_stocks so they get monitored
+            if not any(s['symbol'] == pos['symbol'] for s in self.selected_stocks):
+                self.selected_stocks.append({
+                    'symbol': pos['symbol'],
+                    'token': pos['token'],
+                    'entry_price': pos['entry_price'],
+                    'stop_loss': pos['stop_loss'],
+                    'target_price': pos['target'],
+                    'ltp': pos.get('current_price', pos['entry_price']),
+                    'vwap': pos['entry_price'],  # Approximate
+                    'rsi': 50,  # Neutral
+                    'atr': 0,
+                    'volume_ratio': 1.0
+                })
+        
+        logger.success(f"✅ Synced {len(paper_positions)} position(s) - will be monitored on WebSocket connect")
+        self._log_activity("SYNC", f"Restored {len(paper_positions)} persisted position(s)")
+
     # ==================== Market Analysis ====================
     
     def run_pre_market_analysis(self) -> List[Dict]:
@@ -329,8 +375,9 @@ class TradingBot:
                     can_trade, reason = self.risk_manager.can_trade()
                     
                     if signal and can_trade:
-                        self._last_signal_time[symbol] = datetime.now()  # Record signal time
-                        self._execute_entry(stock_info, signal)
+                        success = self._execute_entry(stock_info, signal)
+                        if success:
+                            self._last_signal_time[symbol] = datetime.now()  # Only set cooldown on success
             
             # Check for exit signals (if in position)
             else:
@@ -351,7 +398,7 @@ class TradingBot:
         except Exception as e: 
             logger.error(f"Price update error for {symbol}: {e}")
     
-    def _execute_entry(self, stock:  Dict, signal: Dict) -> None:
+    def _execute_entry(self, stock: Dict, signal: Dict) -> bool:
         """Execute an entry order"""
         symbol = stock['symbol']
         entry_price = signal['entry_price']
@@ -366,10 +413,10 @@ class TradingBot:
         
         if quantity <= 0:
             logger.warning(f"⚠️ Cannot calculate position size for {symbol}")
-            return
+            return False
         
         # Place order
-        success = self.order_manager.place_buy_order(
+        order_result = self.order_manager.place_buy_order(
             symbol=symbol,
             token=stock['token'],
             price=entry_price,
@@ -378,7 +425,7 @@ class TradingBot:
             target=target
         )
         
-        if success:
+        if order_result.get('status') in ['FILLED', 'PLACED']:
             # Track position
             self.position_tracker.add_position(
                 symbol=symbol,
@@ -389,14 +436,17 @@ class TradingBot:
                 target=target
             )
             
-            self. risk_manager.record_trade()
-            self. daily_stats['trades'] += 1
+            # Trade count is incremented here; P&L is recorded on exit
+            self.daily_stats['trades'] += 1
             
             self._log_activity(
                 "TRADE",
-                f"BUY {quantity} {symbol} @ ₹{entry_price:. 2f}",
+                f"BUY {quantity} {symbol} @ ₹{entry_price:.2f}",
                 {"stop_loss": stop_loss, "target": target}
             )
+            return True
+        
+        return False
     
     def _execute_exit(self, position: Dict, signal:  Dict, price: float) -> None:
         """Execute an exit order"""
