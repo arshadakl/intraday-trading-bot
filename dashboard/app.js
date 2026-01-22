@@ -751,7 +751,7 @@ function initEventListeners() {
     document.getElementById('btn-pause').addEventListener('click', handlePause);
     document.getElementById('btn-stop').addEventListener('click', handleStop);
     document.getElementById('btn-refresh').addEventListener('click', refreshAllData);
-    document.getElementById('btn-settings').addEventListener('click', openSettingsModal);
+
     
     // Tabs
     document.querySelectorAll('.tab-btn').forEach(btn => {

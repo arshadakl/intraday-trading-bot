@@ -1,11 +1,61 @@
-"""Main entry point for the Trading Bot"""
-
+import os
 import sys
+import signal
+import atexit
 from pathlib import Path
 from loguru import logger
 
+# Configuration
+PID_FILE = Path("logs/bot.pid")
+
+def setup_single_instance():
+    """Ensure only one instance of the bot is running."""
+    if PID_FILE.exists():
+        try:
+            with open(PID_FILE, "r") as f:
+                old_pid = int(f.read().strip())
+            
+            # Check if the process is actually running
+            is_running = False
+            if os.name == 'nt':
+                # Windows-specific reliable check
+                import subprocess
+                try:
+                    output = subprocess.check_output(
+                        ['tasklist', '/FI', f'PID eq {old_pid}', '/NH'],
+                        creationflags=0x08000000,
+                        stderr=subprocess.DEVNULL
+                    ).decode('utf-8', errors='ignore')
+                    is_running = str(old_pid) in output
+                except Exception:
+                    is_running = False
+            else:
+                # Unix-specific reliable check
+                try:
+                    os.kill(old_pid, 0)
+                    is_running = True
+                except (OSError, ProcessLookupError):
+                    is_running = False
+
+            if is_running:
+                logger.error(f"⚠️ Bot is already running (PID: {old_pid}). Exiting to prevent duplicate trades.")
+                sys.exit(1)
+            else:
+                logger.info("Found stale PID file, taking over...")
+        except Exception as e:
+            logger.debug(f"PID check error: {e}")
+            pass
+
+    # Write current PID
+    with open(PID_FILE, "w") as f:
+        f.write(str(os.getpid()))
+    
+    # Register cleanup
+    atexit.register(lambda: PID_FILE.unlink(missing_ok=True))
+
 # Ensure directories exist first
 Path("logs").mkdir(exist_ok=True)
+setup_single_instance()
 Path("data/daily").mkdir(parents=True, exist_ok=True)
 Path("data/trades").mkdir(parents=True, exist_ok=True)
 Path("data/reports").mkdir(parents=True, exist_ok=True)
