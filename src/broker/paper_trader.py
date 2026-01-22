@@ -194,8 +194,8 @@ class PaperTrader:
         target: float
     ) -> bool:
         """Simulate a buy order with realistic slippage"""
-        # Simulate slippage (0.05% - buy executes slightly higher)
-        slippage_percent = 0.0005  # 0.05%
+        # Simulate realistic slippage for Indian markets (0.2% - buy executes slightly higher)
+        slippage_percent = 0.002  # 0.2% realistic slippage
         executed_price = price * (1 + slippage_percent)
         
         order_value = executed_price * quantity
@@ -247,7 +247,7 @@ class PaperTrader:
         
         position = self.positions[symbol]
         
-        # Simulate slippage (0.05% - sell executes slightly lower)
+        # Simulate realistic slippage for Indian markets (0.2% - sell executes slightly lower)
         slippage_percent = 0.0005  # 0.05%
         executed_price = price * (1 - slippage_percent)
         
