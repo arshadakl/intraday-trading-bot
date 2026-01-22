@@ -5,6 +5,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>📊 Intraday Trading Bot</title>
+
+    <!-- Favicons -->
+    <link rel="icon" type="image/x-icon" href="/public/favicon_io/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/public/favicon_io/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/public/favicon_io/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/public/favicon_io/apple-touch-icon.png">
+
     <link rel="stylesheet" href="styles.css">
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
@@ -33,8 +40,8 @@
     <!-- Header -->
     <header class="header">
         <div class="header-left">
-            <span class="logo">📊</span>
-            <h1>INTRADAY TRADING BOT</h1>
+            <img src="/public/trading-bot-logo-png.png" alt="Trading Bot" class="logo-img">
+            <h1>ZERO</h1>
         </div>
         <div class="header-right">
             <span id="startup-mode-badge" class="badge startup-mode-pre">🌅 PRE-MARKET</span>
@@ -256,11 +263,22 @@
 
     <!-- Footer / Control Panel -->
     <footer class="control-panel">
-        <button id="btn-start" class="btn btn-start">▶️ START</button>
-        <button id="btn-pause" class="btn btn-pause" disabled>⏸️ PAUSE</button>
-        <button id="btn-stop" class="btn btn-stop" disabled>⏹️ STOP</button>
-        <button id="btn-refresh" class="btn btn-refresh">🔄 REFRESH</button>
-        <button id="btn-settings" class="btn btn-settings">⚙️ SETTINGS</button>
+        <button id="btn-start" class="btn btn-start">
+            <span class="btn-icon">▶</span>
+            <span class="btn-text">START</span>
+        </button>
+        <button id="btn-pause" class="btn btn-pause" disabled>
+            <span class="btn-icon">⏸</span>
+            <span class="btn-text">PAUSE</span>
+        </button>
+        <button id="btn-stop" class="btn btn-stop" disabled>
+            <span class="btn-icon">⏹</span>
+            <span class="btn-text">STOP</span>
+        </button>
+        <button id="btn-refresh" class="btn btn-refresh">
+            <span class="btn-icon">🔄</span>
+            <span class="btn-text">REFRESH</span>
+        </button>
     </footer>
 
     <!-- Settings Modal -->
@@ -276,6 +294,7 @@
         </div>
     </div>
 
+    <script src="button-states.js"></script>
     <script src="app.js"></script>
 </body>
 
