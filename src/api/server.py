@@ -9,6 +9,32 @@ from typing import Optional
 
 from src.core.config_manager import get_config
 
+# Try to import auth module (requires PyJWT)
+# If not available, run without authentication
+try:
+    from src.api.auth import (
+        require_auth, 
+        request_auth_code, 
+        verify_auth_code,
+        verify_jwt_token
+    )
+    AUTH_ENABLED = True
+    logger.info("🔐 Dashboard authentication enabled")
+except ImportError as e:
+    AUTH_ENABLED = False
+    logger.warning(f"⚠️ Auth module import failed: {e}")
+    logger.warning("   Install with: pip install PyJWT")
+    
+    # Create dummy decorators/functions when auth is disabled
+    def require_auth(f):
+        return f
+    def request_auth_code():
+        return {'success': False, 'error': 'Auth not available - install PyJWT'}, 503
+    def verify_auth_code(code):
+        return {'success': False, 'error': 'Auth not available - install PyJWT'}, 503
+    def verify_jwt_token(token):
+        return True, {'email': 'anonymous'}, 'Auth disabled'
+
 
 # Global bot reference (will be set by run.py)
 _trading_bot = None
@@ -40,15 +66,53 @@ def create_app() -> Flask:
     
     @app.route('/')
     def serve_dashboard():
-        """Serve the main dashboard page"""
+        """Serve the main dashboard page (checks auth via JS)"""
         dashboard_path = os.path.join(os.path.dirname(__file__), '../../dashboard')
         return send_from_directory(dashboard_path, 'index.html')
+    
+    @app.route('/login')
+    def serve_login():
+        """Serve the login page"""
+        dashboard_path = os.path.join(os.path.dirname(__file__), '../../dashboard')
+        return send_from_directory(dashboard_path, 'login.html')
     
     @app.route('/<path:filename>')
     def serve_static(filename):
         """Serve static files"""
         dashboard_path = os.path.join(os.path.dirname(__file__), '../../dashboard')
         return send_from_directory(dashboard_path, filename)
+    
+    # ==================== Authentication Endpoints ====================
+    
+    @app.route('/api/auth/request-code', methods=['POST'])
+    def auth_request_code():
+        """Request an authentication code (sent to configured email)"""
+        result, status_code = request_auth_code()
+        return jsonify(result), status_code
+    
+    @app.route('/api/auth/verify-code', methods=['POST'])
+    def auth_verify_code():
+        """Verify authentication code and get JWT token"""
+        data = request.get_json() or {}
+        code = data.get('code', '')
+        result, status_code = verify_auth_code(code)
+        return jsonify(result), status_code
+    
+    @app.route('/api/auth/validate', methods=['GET'])
+    def auth_validate():
+        """Check if current token is valid"""
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return jsonify({'valid': False}), 200
+        
+        token = auth_header[7:]
+        valid, payload, message = verify_jwt_token(token)
+        
+        return jsonify({
+            'valid': valid,
+            'message': message,
+            'email': payload.get('email') if payload else None
+        }), 200
     
     # ==================== Helper Functions ====================
     
@@ -83,6 +147,7 @@ def create_app() -> Flask:
     # ==================== Status & Info ====================
     
     @app.route('/api/status')
+    @require_auth
     def get_status():
         """Get complete bot status"""
         bot, err = get_bot()
@@ -92,6 +157,7 @@ def create_app() -> Flask:
         return success_response(bot.get_status())
     
     @app.route('/api/account')
+    @require_auth
     def get_account():
         """Get account balance information"""
         bot, err = get_bot()
@@ -101,6 +167,7 @@ def create_app() -> Flask:
         return success_response(bot.get_account_info())
     
     @app.route('/api/logs')
+    @require_auth
     def get_logs():
         """Get recent activity logs"""
         bot, err = get_bot()
@@ -115,12 +182,14 @@ def create_app() -> Flask:
     # ==================== Configuration ====================
     
     @app.route('/api/config', methods=['GET'])
+    @require_auth
     def get_config_endpoint():
         """Get current configuration"""
         config = get_config()
         return success_response(config.get_all())
     
     @app.route('/api/config', methods=['POST'])
+    @require_auth
     def update_config():
         """Update configuration values"""
         try:
@@ -150,6 +219,7 @@ def create_app() -> Flask:
             return error_response(str(e))
     
     @app.route('/api/mode', methods=['POST'])
+    @require_auth
     def switch_mode():
         """Switch trading mode (paper/live)"""
         try:
@@ -181,6 +251,7 @@ def create_app() -> Flask:
     # ==================== Trading Data ====================
     
     @app.route('/api/stocks/selected')
+    @require_auth
     def get_selected_stocks():
         """Get today's selected stocks"""
         bot, err = get_bot()
@@ -195,6 +266,7 @@ def create_app() -> Flask:
         })
     
     @app.route('/api/positions')
+    @require_auth
     def get_positions():
         """Get open positions"""
         bot, err = get_bot()
@@ -212,6 +284,7 @@ def create_app() -> Flask:
         })
     
     @app.route('/api/trades/today')
+    @require_auth
     def get_trades_today():
         """Get today's completed trades"""
         bot, err = get_bot()
@@ -241,6 +314,7 @@ def create_app() -> Flask:
     # ==================== Bot Control ====================
     
     @app.route('/api/bot/start', methods=['POST'])
+    @require_auth
     def start_bot():
         """Start the trading bot"""
         bot, err = get_bot()
@@ -257,6 +331,7 @@ def create_app() -> Flask:
             return error_response(str(e))
     
     @app.route('/api/bot/pause', methods=['POST'])
+    @require_auth
     def pause_bot():
         """Pause trading"""
         bot, err = get_bot()
@@ -272,6 +347,7 @@ def create_app() -> Flask:
             return error_response(str(e))
     
     @app.route('/api/bot/resume', methods=['POST'])
+    @require_auth
     def resume_bot():
         """Resume trading"""
         bot, err = get_bot()
@@ -287,6 +363,7 @@ def create_app() -> Flask:
             return error_response(str(e))
     
     @app.route('/api/bot/stop', methods=['POST'])
+    @require_auth
     def stop_bot():
         """Stop the trading bot"""
         bot, err = get_bot()
@@ -310,6 +387,7 @@ def create_app() -> Flask:
             return error_response(str(e))
     
     @app.route('/api/position/exit', methods=['POST'])
+    @require_auth
     def exit_position():
         """Exit a specific position manually"""
         bot, err = get_bot()
@@ -331,6 +409,79 @@ def create_app() -> Flask:
             
         except Exception as e:
             return error_response(str(e))
+    
+    # ==================== Log File & Reports ====================
+    
+    @app.route('/api/logs/file')
+    @require_auth
+    def get_log_file():
+        """Get the last N lines of the log file"""
+        from pathlib import Path
+        
+        lines = request.args.get('lines', 200, type=int)
+        lines = min(lines, 1000)  # Cap at 1000 lines for performance
+        
+        log_path = Path("logs/bot.log")
+        if not log_path.exists():
+            return error_response("Log file not found", "FILE_NOT_FOUND")
+        
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                all_lines = f.readlines()
+                tail_lines = all_lines[-lines:]
+            
+            return success_response({
+                'lines': [line.rstrip() for line in tail_lines],
+                'total': len(tail_lines),
+                'file': str(log_path)
+            })
+        except Exception as e:
+            return error_response(f"Error reading log file: {e}")
+    
+    @app.route('/api/reports')
+    @require_auth
+    def get_reports_list():
+        """Get list of available daily reports"""
+        from pathlib import Path
+        import json
+        
+        reports_dir = Path("data/reports")
+        if not reports_dir.exists():
+            return success_response({'reports': []})
+        
+        reports = []
+        for file in sorted(reports_dir.glob("*.json"), reverse=True):
+            try:
+                with open(file, "r") as f:
+                    data = json.load(f)
+                reports.append({
+                    'date': file.stem,
+                    'filename': file.name,
+                    'trades': data.get('stats', {}).get('trades', 0),
+                    'pnl': data.get('stats', {}).get('pnl', 0)
+                })
+            except:
+                reports.append({'date': file.stem, 'filename': file.name, 'trades': 0, 'pnl': 0})
+        
+        return success_response({'reports': reports})
+    
+    @app.route('/api/reports/<date>')
+    @require_auth
+    def get_report_by_date(date):
+        """Get detailed report for a specific date"""
+        from pathlib import Path
+        import json
+        
+        report_path = Path(f"data/reports/{date}.json")
+        if not report_path.exists():
+            return error_response(f"Report for {date} not found", "NOT_FOUND")
+        
+        try:
+            with open(report_path, "r") as f:
+                data = json.load(f)
+            return success_response(data)
+        except Exception as e:
+            return error_response(f"Error reading report: {e}")
     
     # ==================== Health Check ====================
     
