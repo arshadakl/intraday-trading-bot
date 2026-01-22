@@ -3,8 +3,19 @@
  */
 
 // ==================== API Configuration ====================
-const API_BASE = 'http://127.0.0.1:5000/api';
+const API_BASE = '/api';  // Same origin, relative path
 let refreshInterval = null;
+
+// ==================== Auth Helpers ====================
+
+function getAuthToken() {
+    return localStorage.getItem('auth_token');
+}
+
+function logout() {
+    localStorage.removeItem('auth_token');
+    window.location.href = '/login';
+}
 
 // ==================== Utility Functions ====================
 
@@ -28,14 +39,31 @@ function getCurrentTime() {
 // ==================== API Calls ====================
 
 async function fetchAPI(endpoint, options = {}) {
+    const token = getAuthToken();
+    
+    // Build headers - include auth token if available (but don't require it)
+    const headers = {
+        'Content-Type': 'application/json',
+        ...options.headers
+    };
+    
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+    
     try {
         const response = await fetch(`${API_BASE}${endpoint}`, {
             ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
+            headers: headers
         });
+        
+        // Handle 401 Unauthorized - only redirect if we had a token (auth was expected)
+        if (response.status === 401 && token) {
+            localStorage.removeItem('auth_token');
+            window.location.href = '/login';
+            return { success: false, error: 'Session expired' };
+        }
+        
         return await response.json();
     } catch (error) {
         console.error(`API Error (${endpoint}):`, error);
@@ -65,6 +93,18 @@ async function getTrades() {
 
 async function getLogs() {
     return fetchAPI('/logs?limit=30');
+}
+
+async function getLogFile(lines = 200) {
+    return fetchAPI(`/logs/file?lines=${lines}`);
+}
+
+async function getReports() {
+    return fetchAPI('/reports');
+}
+
+async function getReportDetail(date) {
+    return fetchAPI(`/reports/${date}`);
 }
 
 async function getConfig() {
@@ -317,8 +357,8 @@ function updateTrades(data) {
         tbody.innerHTML = trades.map((trade, index) => {
             const pnlClass = trade.pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
             const statusIcon = trade.exit_reason === 'TARGET' ? '✅' : 
-                              trade.exit_reason === 'STOP_LOSS' ? '🛑' : 
-                              trade.status === 'OPEN' ? '🟡' : '🔵';
+                               trade.exit_reason === 'STOP_LOSS' ? '🛑' : 
+                               trade.status === 'OPEN' ? '🟡' : '🔵';
             
             return `
                 <tr>
@@ -392,50 +432,201 @@ function updateButtonStates(status) {
 
 // ==================== Refresh Data ====================
 
+let logRefreshInterval = null;
+
 async function refreshAllData() {
     try {
-        // Get status
-        const statusResp = await getStatus();
-        if (statusResp.success && statusResp.data) {
-            updateStatusBadge(statusResp.data.status || 'STOPPED');
-            updateModeBadge(statusResp.data.mode || 'paper');
-            updateButtonStates(statusResp.data.status || 'STOPPED');
-            updateStartupMode(statusResp.data.startup_mode);
-            updateMarketAnalysis(statusResp.data);
-        }
+        // Only refresh main dashboard data if that tab is active
+        const activeTabEl = document.querySelector('.tab-btn.active');
+        const activeTab = activeTabEl ? activeTabEl.dataset.tab : 'dashboard';
         
-        // Get account info
-        const accountResp = await getAccount();
-        if (accountResp.success && accountResp.data) {
-            updateAccountInfo(accountResp.data);
+        if (activeTab === 'dashboard') {
+            // Get status
+            const statusResp = await getStatus();
+            if (statusResp.success && statusResp.data) {
+                updateStatusBadge(statusResp.data.status || 'STOPPED');
+                updateModeBadge(statusResp.data.mode || 'paper');
+                updateButtonStates(statusResp.data.status || 'STOPPED');
+                updateStartupMode(statusResp.data.startup_mode);
+                updateMarketAnalysis(statusResp.data);
+            }
+            
+            // Get account info
+            const accountResp = await getAccount();
+            if (accountResp.success && accountResp.data) {
+                updateAccountInfo(accountResp.data);
+            }
+            
+            // Get selected stocks
+            const stocksResp = await getSelectedStocks();
+            if (stocksResp.success && stocksResp.data) {
+                updateStocksTable(stocksResp.data.stocks || []);
+            }
+            
+            // Get positions
+            const positionsResp = await getPositions();
+            if (positionsResp.success && positionsResp.data) {
+                updatePositions(positionsResp.data);
+            }
+            
+            // Get trades
+            const tradesResp = await getTrades();
+            if (tradesResp.success && tradesResp.data) {
+                updateTrades(tradesResp.data);
+            }
+            
+            // Get activity logs (mini log in dashboard)
+            const logsResp = await getLogs();
+            if (logsResp.success && logsResp.data) {
+                updateActivityLog(logsResp.data.logs || []);
+            }
         }
-        
-        // Get selected stocks
-        const stocksResp = await getSelectedStocks();
-        if (stocksResp.success && stocksResp.data) {
-            updateStocksTable(stocksResp.data.stocks || []);
-        }
-        
-        // Get positions
-        const positionsResp = await getPositions();
-        if (positionsResp.success && positionsResp.data) {
-            updatePositions(positionsResp.data);
-        }
-        
-        // Get trades
-        const tradesResp = await getTrades();
-        if (tradesResp.success && tradesResp.data) {
-            updateTrades(tradesResp.data);
-        }
-        
-        // Get logs
-        const logsResp = await getLogs();
-        if (logsResp.success && logsResp.data) {
-            updateActivityLog(logsResp.data.logs || []);
-        }
-        
     } catch (error) {
         console.error('Error refreshing data:', error);
+    }
+}
+
+async function refreshLogFile() {
+    const select = document.getElementById('log-lines-select');
+    const lines = select ? select.value : 200;
+    const result = await getLogFile(lines);
+    if (result.success && result.data) {
+        const pre = document.getElementById('log-file-content');
+        if (!pre) return;
+        const logLines = result.data.lines || [];
+        pre.textContent = logLines.join('\n');
+        // Scroll to bottom
+        pre.scrollTop = pre.scrollHeight;
+    }
+}
+
+async function refreshReportsList() {
+    const result = await getReports();
+    if (result.success && result.data) {
+        const container = document.getElementById('reports-list');
+        if (!container) return;
+        const reports = result.data.reports || [];
+        
+        if (reports.length === 0) {
+            container.innerHTML = '<p class="no-data">No reports found.</p>';
+            return;
+        }
+        
+        container.innerHTML = reports.map(report => `
+            <div class="report-item" onclick="loadReportDetail('${report.date}')" data-date="${report.date}">
+                <div class="report-item-header">
+                    <span class="report-item-date">${report.date}</span>
+                    <span class="report-item-pnl ${report.pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}">${formatCurrency(report.pnl)}</span>
+                </div>
+                <div class="report-item-stats">Trades: ${report.trades}</div>
+            </div>
+        `).join('');
+    }
+}
+
+async function loadReportDetail(date) {
+    // UI selection
+    document.querySelectorAll('.report-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.date === date);
+    });
+    
+    const detailContainer = document.getElementById('report-detail');
+    if (!detailContainer) return;
+    
+    detailContainer.innerHTML = '<p class="loading">Loading report details...</p>';
+    
+    const result = await getReportDetail(date);
+    if (result.success && result.data) {
+        const report = result.data;
+        const stats = report.stats || {};
+        const pnl = stats.pnl || 0;
+        
+        detailContainer.innerHTML = `
+            <div class="report-summary-grid">
+                <div class="report-stat-box">
+                    <span class="report-stat-label">Total P&L</span>
+                    <span class="report-stat-value ${pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}">${formatCurrency(pnl)}</span>
+                </div>
+                <div class="report-stat-box">
+                    <span class="report-stat-label">Trades</span>
+                    <span class="report-stat-value">${stats.trades || 0}</span>
+                </div>
+                <div class="report-stat-box">
+                    <span class="report-stat-label">Wins/Losses</span>
+                    <span class="report-stat-value">${stats.wins || 0}W / ${stats.losses || 0}L</span>
+                </div>
+            </div>
+            
+            <h3>Trades</h3>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Entry</th>
+                            <th>Exit</th>
+                            <th>P&L</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${(report.trades || []).map(trade => `
+                            <tr>
+                                <td>${trade.symbol?.replace('-EQ', '')}</td>
+                                <td>${formatPrice(trade.entry_price)}</td>
+                                <td>${formatPrice(trade.exit_price)}</td>
+                                <td class="${trade.pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}">${formatCurrency(trade.pnl)}</td>
+                                <td style="font-size: 0.7rem">${trade.exit_reason || 'N/A'}</td>
+                            </tr>
+                        `).join('') || '<tr><td colspan="5" class="no-data">No trades recorded</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+            <div style="margin-top: var(--spacing-lg); color: var(--text-muted); font-size: 0.8rem;">
+                Final Balance: ${formatPrice(report.final_balance || 0)}
+            </div>
+        `;
+    }
+}
+
+// ==================== Tab Switching ====================
+
+function switchTab(tabId) {
+    // Update buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabId);
+    });
+    
+    // Update content visibility
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.toggle('hidden', content.id !== `tab-${tabId}`);
+    });
+    
+    // Special handling for tabs
+    if (tabId === 'logs') {
+        refreshLogFile();
+        startLogAutoRefresh();
+    } else {
+        stopLogAutoRefresh();
+    }
+    
+    if (tabId === 'reports') {
+        refreshReportsList();
+    }
+}
+
+function startLogAutoRefresh() {
+    stopLogAutoRefresh(); // Clear existing
+    const autoRefresh = document.getElementById('log-auto-refresh');
+    if (autoRefresh && autoRefresh.checked) {
+        logRefreshInterval = setInterval(refreshLogFile, 5000);
+    }
+}
+
+function stopLogAutoRefresh() {
+    if (logRefreshInterval) {
+        clearInterval(logRefreshInterval);
+        logRefreshInterval = null;
     }
 }
 
@@ -533,6 +724,7 @@ async function exitPosition(symbol) {
 
 function addLogEntry(category, message) {
     const container = document.getElementById('activity-log');
+    if (!container) return;
     const entry = document.createElement('div');
     entry.className = `log-entry ${category.toLowerCase()}`;
     entry.innerHTML = `
@@ -561,14 +753,26 @@ function initEventListeners() {
     document.getElementById('btn-refresh').addEventListener('click', refreshAllData);
     document.getElementById('btn-settings').addEventListener('click', openSettingsModal);
     
+    // Tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+    
+    // Log controls
+    document.getElementById('btn-refresh-logs')?.addEventListener('click', refreshLogFile);
+    document.getElementById('log-auto-refresh')?.addEventListener('change', (e) => {
+        if (e.target.checked) startLogAutoRefresh();
+        else stopLogAutoRefresh();
+    });
+    
     // Config
-    document.getElementById('save-config').addEventListener('click', handleSaveConfig);
-    document.getElementById('mode-paper').addEventListener('click', () => handleModeToggle('paper'));
-    document.getElementById('mode-live').addEventListener('click', () => handleModeToggle('live'));
+    document.getElementById('save-config')?.addEventListener('click', handleSaveConfig);
+    document.getElementById('mode-paper')?.addEventListener('click', () => handleModeToggle('paper'));
+    document.getElementById('mode-live')?.addEventListener('click', () => handleModeToggle('live'));
     
     // Modal
-    document.querySelector('.modal-close').addEventListener('click', closeSettingsModal);
-    document.getElementById('settings-modal').addEventListener('click', (e) => {
+    document.querySelector('.modal-close')?.addEventListener('click', closeSettingsModal);
+    document.getElementById('settings-modal')?.addEventListener('click', (e) => {
         if (e.target.id === 'settings-modal') closeSettingsModal();
     });
 }
@@ -576,13 +780,20 @@ function initEventListeners() {
 async function loadInitialConfig() {
     const result = await getConfig();
     if (result.success && result.data) {
-        document.getElementById('stop-loss').value = result.data.strategy?.stop_loss_percent || 0.5;
-        document.getElementById('target').value = result.data.strategy?.target_percent || 1.0;
-        document.getElementById('max-trades').value = result.data.strategy?.max_trades_per_day || 3;
+        const sl = document.getElementById('stop-loss');
+        if (sl) sl.value = result.data.strategy?.stop_loss_percent || 0.5;
+        
+        const tgt = document.getElementById('target');
+        if (tgt) tgt.value = result.data.strategy?.target_percent || 1.0;
+        
+        const maxT = document.getElementById('max-trades');
+        if (maxT) maxT.value = result.data.strategy?.max_trades_per_day || 3;
         
         const mode = result.data.trading_mode || 'paper';
-        document.getElementById('mode-paper').classList.toggle('active', mode === 'paper');
-        document.getElementById('mode-live').classList.toggle('active', mode === 'live');
+        const paperBtn = document.getElementById('mode-paper');
+        const liveBtn = document.getElementById('mode-live');
+        if (paperBtn) paperBtn.classList.toggle('active', mode === 'paper');
+        if (liveBtn) liveBtn.classList.toggle('active', mode === 'live');
     }
 }
 

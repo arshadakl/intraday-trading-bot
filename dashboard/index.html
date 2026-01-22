@@ -12,6 +12,24 @@
 </head>
 
 <body>
+    <!-- Auth Check -->
+    <script>
+        (function () {
+            const token = localStorage.getItem('auth_token');
+            fetch('/api/auth/validate', {
+                headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+            }).then(r => r.json()).then(data => {
+                if (data.valid || (data.message && data.message.includes('disabled'))) return;
+                if (!token || !data.valid) {
+                    localStorage.removeItem('auth_token');
+                    window.location.href = '/login';
+                }
+            }).catch(() => {
+                console.log('Auth check failed - allowing access');
+            });
+        })();
+    </script>
+
     <!-- Header -->
     <header class="header">
         <div class="header-left">
@@ -23,193 +41,220 @@
             <span id="status-badge" class="badge status-stopped">⚪ STOPPED</span>
             <span id="mode-badge" class="badge mode-paper">PAPER</span>
             <span id="current-time" class="time">--:--:--</span>
+            <button id="btn-logout" class="btn btn-logout" title="Logout" onclick="logout()">🚪</button>
         </div>
     </header>
 
-    <!-- Main Content -->
-    <main class="main-content">
-        <!-- Left Column -->
-        <div class="left-column">
-            <!-- Account Info -->
-            <section class="card account-card">
-                <h2>💰 Account Info</h2>
-                <div class="account-grid">
-                    <div class="account-item">
-                        <span class="label">Total Balance</span>
-                        <span id="total-balance" class="value">₹0.00</span>
-                    </div>
-                    <div class="account-item">
-                        <span class="label">Available</span>
-                        <span id="available-balance" class="value">₹0.00</span>
-                    </div>
-                    <div class="account-item">
-                        <span class="label">Used Margin</span>
-                        <span id="used-margin" class="value">₹0.00</span>
-                    </div>
-                </div>
-                <div class="pnl-section">
-                    <div class="pnl-header">
-                        <span class="label">Today's P&L</span>
-                        <span id="daily-pnl" class="value pnl-positive">+₹0.00</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div id="pnl-progress" class="progress-fill"></div>
-                    </div>
-                </div>
-                <div class="loss-limit">
-                    <span class="label">Daily Loss Limit</span>
-                    <span id="loss-remaining" class="value-small">₹1,000 remaining</span>
-                    <div class="progress-bar small">
-                        <div id="loss-progress" class="progress-fill warning"></div>
-                    </div>
-                </div>
-            </section>
+    <!-- Tab Navigation -->
+    <nav class="tab-nav">
+        <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
+        <button class="tab-btn" data-tab="logs">📜 Logs</button>
+        <button class="tab-btn" data-tab="reports">📈 Reports</button>
+    </nav>
 
-            <!-- Quick Config -->
-            <section class="card config-card">
-                <h2>⚙️ Quick Config</h2>
-                <div class="config-item">
-                    <label for="stop-loss">Stop Loss %</label>
-                    <select id="stop-loss">
-                        <option value="0.5">0.5%</option>
-                        <option value="0.75">0.75%</option>
-                        <option value="1.0">1.0%</option>
-                    </select>
-                </div>
-                <div class="config-item">
-                    <label for="target">Target %</label>
-                    <select id="target">
-                        <option value="1.0">1.0%</option>
-                        <option value="1.25">1.25%</option>
-                        <option value="1.5">1.5%</option>
-                    </select>
-                </div>
-                <div class="config-item">
-                    <label for="max-trades">Max Trades</label>
-                    <select id="max-trades">
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3" selected>3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                    </select>
-                </div>
-                <div class="config-item mode-toggle">
-                    <label>Trading Mode</label>
-                    <div class="toggle-group">
-                        <button id="mode-paper" class="toggle-btn active">Paper</button>
-                        <button id="mode-live" class="toggle-btn">Live</button>
+    <!-- Dashboard Tab -->
+    <main class="tab-content" id="tab-dashboard">
+        <div class="dashboard-grid">
+            <!-- Left Column -->
+            <div class="left-column">
+                <!-- Account Info -->
+                <section class="card account-card">
+                    <h2>💰 Account Info</h2>
+                    <div class="account-grid">
+                        <div class="account-item">
+                            <span class="label">Total Balance</span>
+                            <span id="total-balance" class="value">₹0.00</span>
+                        </div>
+                        <div class="account-item">
+                            <span class="label">Available</span>
+                            <span id="available-balance" class="value">₹0.00</span>
+                        </div>
+                        <div class="account-item">
+                            <span class="label">Used Margin</span>
+                            <span id="used-margin" class="value">₹0.00</span>
+                        </div>
                     </div>
-                </div>
-                <button id="save-config" class="btn btn-save">💾 Save Changes</button>
-            </section>
+                    <div class="pnl-section">
+                        <div class="pnl-header">
+                            <span class="label">Today's P&L</span>
+                            <span id="daily-pnl" class="value pnl-positive">+₹0.00</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div id="pnl-progress" class="progress-fill"></div>
+                        </div>
+                    </div>
+                    <div class="loss-limit">
+                        <span class="label">Daily Loss Limit</span>
+                        <span id="loss-remaining" class="value-small">₹1,000 remaining</span>
+                        <div class="progress-bar small">
+                            <div id="loss-progress" class="progress-fill warning"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Quick Config -->
+                <section class="card config-card">
+                    <h2>⚙️ Quick Config</h2>
+                    <div class="config-item">
+                        <label for="stop-loss">Stop Loss %</label>
+                        <select id="stop-loss">
+                            <option value="0.5">0.5%</option>
+                            <option value="0.75">0.75%</option>
+                            <option value="1.0">1.0%</option>
+                        </select>
+                    </div>
+                    <div class="config-item">
+                        <label for="target">Target %</label>
+                        <select id="target">
+                            <option value="1.0">1.0%</option>
+                            <option value="1.25">1.25%</option>
+                            <option value="1.5">1.5%</option>
+                        </select>
+                    </div>
+                    <div class="config-item">
+                        <label for="max-trades">Max Trades</label>
+                        <select id="max-trades">
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3" selected>3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                        </select>
+                    </div>
+                    <div class="config-item mode-toggle">
+                        <label>Trading Mode</label>
+                        <div class="toggle-group">
+                            <button id="mode-paper" class="toggle-btn active">Paper</button>
+                            <button id="mode-live" class="toggle-btn">Live</button>
+                        </div>
+                    </div>
+                    <button id="save-config" class="btn btn-save">💾 Save Changes</button>
+                </section>
+            </div>
+
+            <!-- Center Column -->
+            <div class="center-column">
+                <section id="market-analysis-section" class="card analysis-card">
+                    <h2>🔍 Market Analysis Status</h2>
+                    <div class="analysis-info">
+                        <div class="analysis-item">
+                            <span class="label">Startup Mode</span>
+                            <span id="analysis-startup-mode" class="value mode-text">Waiting...</span>
+                        </div>
+                        <div class="analysis-item">
+                            <span class="label">Analysis Time</span>
+                            <span id="analysis-time" class="value">Not analyzed yet</span>
+                        </div>
+                        <div class="analysis-item">
+                            <span class="label">Stocks Analyzed</span>
+                            <span id="stocks-analyzed" class="value">0</span>
+                        </div>
+                        <div class="analysis-item">
+                            <span class="label">Trading Status</span>
+                            <span id="trading-status" class="value">--</span>
+                        </div>
+                    </div>
+                    <div id="trading-decision" class="trading-decision">
+                        <p id="trading-reason">Waiting for analysis...</p>
+                    </div>
+                </section>
+
+                <section class="card stocks-card">
+                    <h2>📋 Today's Selected Stocks</h2>
+                    <div class="table-container">
+                        <table id="stocks-table">
+                            <thead>
+                                <tr>
+                                    <th>Stock</th>
+                                    <th>LTP</th>
+                                    <th>Entry</th>
+                                    <th>Target</th>
+                                    <th>SL</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stocks-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="card positions-card">
+                    <h2>📈 Open Positions</h2>
+                    <div id="positions-container"></div>
+                </section>
+
+                <section class="card trades-card">
+                    <h2>📊 Today's Trades</h2>
+                    <div class="table-container">
+                        <table id="trades-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Stock</th>
+                                    <th>Buy</th>
+                                    <th>Sell</th>
+                                    <th>P&L</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trades-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="trades-summary">
+                        <span>Total P&L: <strong id="total-pnl">₹0.00</strong></span>
+                        <span>Win Rate: <strong id="win-rate">0%</strong></span>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Right Column -->
+            <div class="right-column">
+                <section class="card log-card">
+                    <h2>📜 Activity Log</h2>
+                    <div id="activity-log" class="log-container"></div>
+                </section>
+            </div>
         </div>
+    </main>
 
-        <!-- Center Column -->
-        <div class="center-column">
-            <!-- Market Analysis Info -->
-            <section id="market-analysis-section" class="card analysis-card">
-                <h2>🔍 Market Analysis Status</h2>
-                <div class="analysis-info">
-                    <div class="analysis-item">
-                        <span class="label">Startup Mode</span>
-                        <span id="analysis-startup-mode" class="value mode-text">Waiting...</span>
-                    </div>
-                    <div class="analysis-item">
-                        <span class="label">Analysis Time</span>
-                        <span id="analysis-time" class="value">Not analyzed yet</span>
-                    </div>
-                    <div class="analysis-item">
-                        <span class="label">Stocks Analyzed</span>
-                        <span id="stocks-analyzed" class="value">0</span>
-                    </div>
-                    <div class="analysis-item">
-                        <span class="label">Trading Status</span>
-                        <span id="trading-status" class="value">--</span>
-                    </div>
+    <!-- Logs Tab -->
+    <main class="tab-content hidden" id="tab-logs">
+        <section class="card log-file-card">
+            <div class="log-header">
+                <h2>📜 Log File Viewer</h2>
+                <div class="log-controls">
+                    <select id="log-lines-select">
+                        <option value="100">Last 100 lines</option>
+                        <option value="200" selected>Last 200 lines</option>
+                        <option value="500">Last 500 lines</option>
+                    </select>
+                    <button id="btn-refresh-logs" class="btn btn-small">🔄 Refresh</button>
+                    <label class="auto-refresh-label">
+                        <input type="checkbox" id="log-auto-refresh" checked> Auto-refresh
+                    </label>
                 </div>
-                <div id="trading-decision" class="trading-decision">
-                    <p id="trading-reason">Waiting for analysis...</p>
-                </div>
+            </div>
+            <pre id="log-file-content" class="log-file-viewer">Loading logs...</pre>
+        </section>
+    </main>
+
+    <!-- Reports Tab -->
+    <main class="tab-content hidden" id="tab-reports">
+        <div class="reports-layout">
+            <section class="card reports-list-card">
+                <h2>📈 Daily Reports</h2>
+                <div id="reports-list" class="reports-list"></div>
             </section>
-
-            <!-- Selected Stocks -->
-            <section class="card stocks-card">
-                <h2>📋 Today's Selected Stocks</h2>
-                <div class="table-container">
-                    <table id="stocks-table">
-                        <thead>
-                            <tr>
-                                <th>Stock</th>
-                                <th>LTP</th>
-                                <th>Entry</th>
-                                <th>Target</th>
-                                <th>SL</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="stocks-body">
-                            <tr class="no-data">
-                                <td colspan="6">No stocks selected yet</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <!-- Open Positions -->
-            <section class="card positions-card">
-                <h2>📈 Open Positions</h2>
-                <div id="positions-container">
-                    <div class="no-data">No open positions</div>
-                </div>
-            </section>
-
-            <!-- Today's Trades -->
-            <section class="card trades-card">
-                <h2>📊 Today's Trades</h2>
-                <div class="table-container">
-                    <table id="trades-table">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>Stock</th>
-                                <th>Buy</th>
-                                <th>Sell</th>
-                                <th>P&L</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="trades-body">
-                            <tr class="no-data">
-                                <td colspan="6">No trades yet</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="trades-summary">
-                    <span>Total P&L: <strong id="total-pnl">₹0.00</strong></span>
-                    <span>Win Rate: <strong id="win-rate">0%</strong></span>
-                </div>
-            </section>
-        </div>
-
-        <!-- Right Column -->
-        <div class="right-column">
-            <!-- Activity Log -->
-            <section class="card log-card">
-                <h2>📜 Activity Log</h2>
-                <div id="activity-log" class="log-container">
-                    <div class="log-entry system">
-                        <span class="log-time">--:--:--</span>
-                        <span class="log-message">Waiting for bot to start...</span>
-                    </div>
+            <section class="card report-detail-card">
+                <h2>Report Details</h2>
+                <div id="report-detail" class="report-detail">
+                    <p class="hint">Select a report from the list to view details.</p>
                 </div>
             </section>
         </div>
     </main>
 
-    <!-- Control Panel -->
+    <!-- Footer / Control Panel -->
     <footer class="control-panel">
         <button id="btn-start" class="btn btn-start">▶️ START</button>
         <button id="btn-pause" class="btn btn-pause" disabled>⏸️ PAUSE</button>

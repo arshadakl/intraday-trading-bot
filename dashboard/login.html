@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔐 Login - Trading Bot</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
+        }
+
+        .login-card {
+            background: rgba(22, 33, 62, 0.9);
+            border: 1px solid rgba(74, 222, 128, 0.2);
+            border-radius: 16px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .login-header .logo {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .login-header h1 {
+            color: #4ade80;
+            font-size: 24px;
+            margin: 0 0 8px 0;
+        }
+
+        .login-header p {
+            color: #888;
+            font-size: 14px;
+            margin: 0;
+        }
+
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-group label {
+            color: #aaa;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .otp-input {
+            background: #0f3460;
+            border: 1px solid #2a2a4a;
+            border-radius: 8px;
+            padding: 16px;
+            font-size: 24px;
+            text-align: center;
+            letter-spacing: 8px;
+            color: #4ade80;
+            font-family: 'JetBrains Mono', monospace;
+            transition: all 0.3s ease;
+        }
+
+        .otp-input:focus {
+            outline: none;
+            border-color: #4ade80;
+            box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.2);
+        }
+
+        .otp-input::placeholder {
+            color: #444;
+            letter-spacing: 4px;
+        }
+
+        .btn-auth {
+            background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+            color: #0f0f1a;
+            border: none;
+            padding: 16px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-auth:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(74, 222, 128, 0.3);
+        }
+
+        .btn-auth:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: #4ade80;
+            border: 1px solid #4ade80;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: rgba(74, 222, 128, 0.1);
+            box-shadow: none;
+            transform: none;
+        }
+
+        .message {
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            text-align: center;
+            display: none;
+        }
+
+        .message.success {
+            background: rgba(74, 222, 128, 0.1);
+            border: 1px solid rgba(74, 222, 128, 0.3);
+            color: #4ade80;
+            display: block;
+        }
+
+        .message.error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #ef4444;
+            display: block;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .step {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #2a2a4a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: #666;
+            transition: all 0.3s ease;
+        }
+
+        .step.active {
+            background: #4ade80;
+            color: #0f0f1a;
+        }
+
+        .step.completed {
+            background: #22c55e;
+            color: white;
+        }
+
+        .timer {
+            color: #888;
+            font-size: 13px;
+            text-align: center;
+        }
+
+        .timer span {
+            color: #4ade80;
+            font-weight: 600;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="logo">📊</div>
+                <h1>Trading Bot</h1>
+                <p>Secure access to your dashboard</p>
+            </div>
+
+            <div class="step-indicator">
+                <div id="step1" class="step active">1</div>
+                <div id="step2" class="step">2</div>
+            </div>
+
+            <!-- Step 1: Request Code -->
+            <div id="step-request" class="login-form">
+                <p style="color: #aaa; text-align: center; font-size: 14px; margin: 0 0 16px 0;">
+                    Click below to receive a one-time authentication code on your registered email.
+                </p>
+
+                <div id="message-request" class="message"></div>
+
+                <button id="btn-request-code" class="btn-auth" onclick="requestCode()">
+                    📧 Send Auth Code
+                </button>
+            </div>
+
+            <!-- Step 2: Verify Code -->
+            <div id="step-verify" class="login-form hidden">
+                <div class="form-group">
+                    <label>Enter 8-Digit Code</label>
+                    <input type="text" id="otp-input" class="otp-input" maxlength="8" placeholder="••••••••"
+                        autocomplete="off" inputmode="numeric">
+                </div>
+
+                <div id="message-verify" class="message"></div>
+
+                <button id="btn-verify" class="btn-auth" onclick="verifyCode()">
+                    🔓 Verify & Login
+                </button>
+
+                <div class="timer" id="resend-timer">
+                    Code expires in <span id="timer-value">10:00</span>
+                </div>
+
+                <button id="btn-resend" class="btn-auth btn-secondary hidden" onclick="requestCode()">
+                    🔄 Resend Code
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="login.js"></script>
+</body>
+
+</html>

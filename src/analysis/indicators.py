@@ -9,6 +9,7 @@ from ta.momentum import RSIIndicator
 from ta.volume import VolumeWeightedAveragePrice
 from ta.trend import SMAIndicator, EMAIndicator
 from ta.volatility import AverageTrueRange
+from datetime import datetime
 from typing import Optional, Dict, List
 from loguru import logger
 
@@ -450,3 +451,124 @@ class Indicators(TechnicalIndicators):
 def calculate_indicators_for_stock(df: pd.DataFrame) -> pd.DataFrame:
     """Alias for backward compatibility"""
     return TechnicalIndicators.calculate_all_indicators(df)
+
+class LiveIndicatorManager:
+    """
+    Manages real-time indicator calculations using 1-minute candle aggregation.
+    Ensures that indicators like RSI reflect meaningful price action rather than tick noise.
+    Also tracks cumulative daily VWAP according to standard formulas.
+    """
+    
+    def __init__(self, candle_interval_minutes: int = 1):
+        self.candle_interval = candle_interval_minutes
+        self.histories: Dict[str, pd.DataFrame] = {}
+        self.current_candles: Dict[str, Dict] = {} # Tracking current partial candle
+        self.vwap_stats: Dict[str, Dict] = {} # total_pv, total_volume for cumulative VWAP
+    
+    def update(self, symbol: str, price_data: Dict, historical_candles: Optional[pd.DataFrame] = None) -> Dict:
+        """
+        Update indicators with a new price tick.
+        
+        Args:
+            symbol: Stock symbol
+            price_data: Latest tick data (ltp, volume, open, high, low)
+            historical_candles: Optional past 1-minute candles for initialization
+            
+        Returns:
+            Dict of latest indicator values
+        """
+        now = datetime.now()
+        ltp = float(price_data.get('ltp', 0))
+        volume = float(price_data.get('volume', 0))
+        
+        # 1. Initialize if needed
+        if symbol not in self.histories:
+            if historical_candles is not None:
+                self.histories[symbol] = historical_candles.copy().tail(100)
+            else:
+                self.histories[symbol] = pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume'])
+            
+            self.vwap_stats[symbol] = {'total_pv': 0.0, 'total_volume': 0.0}
+            self.current_candles[symbol] = self._reset_candle(ltp, now)
+            self.current_candles[symbol]['last_total_volume'] = volume # Baseline immediately
+
+        # 2. Cumulative VWAP Update (Standard Intraday Formula)
+        # Cumulative VWAP = Cumulative(Typical Price * Volume) / Cumulative(Volume)
+        # For ticks, we use ltp * tick_volume. If tick_volume isn't available, we use cumulative volume changes.
+        stats = self.vwap_stats[symbol]
+        last_vol = self.current_candles[symbol]['last_total_volume']
+        tick_vol = max(0, volume - last_vol) if last_vol > 0 else 0
+        
+        # Update cumulative totals
+        stats['total_pv'] += ltp * tick_vol
+        stats['total_volume'] += tick_vol
+        cumulative_vwap = stats['total_pv'] / stats['total_volume'] if stats['total_volume'] > 0 else ltp
+
+        # 3. Candle Aggregation (1-minute)
+        current = self.current_candles[symbol]
+        candle_minute = now.replace(second=0, microsecond=0)
+        
+        if candle_minute > current['timestamp']:
+            # Time to close the current candle and start a new one
+            new_row = pd.DataFrame([{
+                'open': current['open'],
+                'high': current['high'],
+                'low': current['low'],
+                'close': current['close'],
+                'volume': current['volume']
+            }], index=[current['timestamp']])
+            
+            self.histories[symbol] = pd.concat([self.histories[symbol], new_row]).tail(100)
+            
+            # Reset for new minute
+            self.current_candles[symbol] = self._reset_candle(ltp, candle_minute)
+            self.current_candles[symbol]['volume'] = tick_vol
+        else:
+            # Update existing partial candle
+            current['high'] = max(current['high'], ltp)
+            current['low'] = min(current['low'], ltp)
+            current['close'] = ltp
+            current['volume'] += tick_vol
+        
+        current['last_total_volume'] = volume
+
+        # 4. Indicators Calculation
+        # We combine completed history with the current live partial candle for the absolute latest indicators
+        history = self.histories[symbol]
+        if len(history) < 2: # Not enough data yet
+            return {
+                "close": ltp,
+                "rsi": 50,
+                "vwap": cumulative_vwap,
+                "atr": 0,
+                "volume_ratio": 1.0
+            }
+            
+        # Create a temp DF including the current partial candle for RSI/SMA calculation
+        live_df = pd.concat([history, pd.DataFrame([{
+            'open': current['open'],
+            'high': current['high'],
+            'low': current['low'],
+            'close': current['close'],
+            'volume': current['volume']
+        }], index=[current['timestamp']])])
+        
+        calculated = TechnicalIndicators.calculate_all_indicators(live_df)
+        latest = get_latest_indicators(calculated)
+        
+        # Override rolling VWAP with our Cumulative Daily VWAP
+        latest['vwap'] = cumulative_vwap
+        
+        return latest
+
+    def _reset_candle(self, price: float, timestamp: datetime) -> Dict:
+        """Initialize or reset a candle record"""
+        return {
+            'timestamp': timestamp.replace(second=0, microsecond=0),
+            'open': price,
+            'high': price,
+            'low': price,
+            'close': price,
+            'volume': 0,
+            'last_total_volume': 0 # Used to track volume increments
+        }

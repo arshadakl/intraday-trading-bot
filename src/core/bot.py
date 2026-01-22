@@ -19,6 +19,7 @@ from src.strategy.vwap_rsi_strategy import VWAPRSIStrategy
 from src.strategy.risk_manager import RiskManager
 from src.executor.order_manager import OrderManager
 from src.executor.position_tracker import PositionTracker
+from src.analysis.indicators import LiveIndicatorManager
 
 
 class TradingBot:
@@ -46,6 +47,7 @@ class TradingBot:
         self.risk_manager: Optional[RiskManager] = None
         self.order_manager: Optional[OrderManager] = None
         self. position_tracker: Optional[PositionTracker] = None
+        self.live_indicators = LiveIndicatorManager()
         
         # State
         self.status = "STOPPED"  # STOPPED, INITIALIZING, READY, RUNNING, PAUSED
@@ -73,6 +75,14 @@ class TradingBot:
         # Signal cooldown tracking (prevents race condition)
         self._last_signal_time: Dict[str, datetime] = {}
         self._signal_cooldown_seconds = 60  # Minimum 60 seconds between signals for same stock
+        
+        # Pending orders tracking
+        self.pending_orders: Dict[str, Dict] = {} # order_id -> order_details
+        self._pending_lock = threading.Lock()
+        
+        # Cooldown tracking
+        self._last_exit_time: Dict[str, datetime] = {}
+        self._exit_cooldown_minutes = 5 # Prevent re-entry for 5 minutes after exit
         
         # Ensure data directories exist
         Path("data/daily").mkdir(parents=True, exist_ok=True)
@@ -301,6 +311,22 @@ class TradingBot:
                             "target_price": target
                         }
                     )
+                    
+                    # Seed LiveIndicatorManager with historical data for the selected stock
+                    try:
+                        hist_df = self.pre_market_analyzer.broker.get_historical_data(
+                            symbol=stock['symbol'],
+                            token=stock['token'],
+                            interval="ONE_MINUTE",
+                            days=1 # 1 day of 1-minute candles is ~375 candles, plenty for RSI
+                        )
+                        if hist_df:
+                            from src.analysis.indicators import prepare_dataframe
+                            df = prepare_dataframe(hist_df)
+                            self.live_indicators.update(stock['symbol'], {'ltp': ltp}, df)
+                            logger.info(f"   └─ Seeded live indicators with historical data")
+                    except Exception as e:
+                        logger.warning(f"   └─ Failed to seed live indicators: {e}")
                 
                 logger.info("")
                 logger.info("=" * 60)
@@ -363,18 +389,31 @@ class TradingBot:
                         if time_since_signal < self._signal_cooldown_seconds:
                             return  # Skip - too soon after last signal
                     
-                    # Prepare indicators from cached data and stock info
-                    indicators = {
-                        'rsi': stock_info.get('rsi', 50),
-                        'vwap': stock_info.get('vwap', current_price),
-                        'volume_ratio': stock_info.get('volume_ratio', 1.0),
-                        'atr': stock_info.get('atr', 0)  # For dynamic SL/Target
-                    }
+                    # Get real-time dynamic indicators
+                    indicators = self.live_indicators.update(symbol, price_data)
+                    
+                    # Update stock_info with latest indicators for dashboard/logging
+                    stock_info.update(indicators)
                     
                     signal = self.strategy.check_entry_signal(stock_info, current_price, indicators)
                     can_trade, reason = self.risk_manager.can_trade()
                     
                     if signal and can_trade:
+                        # [CRITICAL] Check if we already have a pending order for this symbol
+                        with self._pending_lock:
+                            is_pending = any(o['symbol'] == symbol for o in self.pending_orders.values())
+                        
+                        if is_pending:
+                            logger.debug(f"⏳ Skipping entry for {symbol}: Order already pending")
+                            return
+                            
+                        # [CRITICAL] Check exit cooldown
+                        last_exit = self._last_exit_time.get(symbol)
+                        if last_exit:
+                            if (datetime.now() - last_exit).total_seconds() < (self._exit_cooldown_minutes * 60):
+                                logger.debug(f"⏳ Skipping entry for {symbol}: In exit cooldown")
+                                return
+                        
                         success = self._execute_entry(stock_info, signal)
                         if success:
                             self._last_signal_time[symbol] = datetime.now()  # Only set cooldown on success
@@ -383,14 +422,11 @@ class TradingBot:
             else:
                 position = self.position_tracker.get_position(symbol)
                 # Get indicators for exit check
-                stock_info = next(
-                    (s for s in self.selected_stocks if s['symbol'] == symbol),
-                    {}
-                )
-                indicators = {
-                    'rsi': stock_info.get('rsi', 50),
-                    'vwap': stock_info.get('vwap', current_price)
-                }
+                # Get real-time dynamic indicators for exit check
+                indicators = self.live_indicators.update(symbol, price_data)
+                
+                # Update stock_info with latest indicators
+                stock_info.update(indicators)
                 signal = self.strategy.check_exit_signal(position, current_price, indicators)
                 if signal: 
                     self._execute_exit(position, signal, current_price)
@@ -425,26 +461,94 @@ class TradingBot:
             target=target
         )
         
-        if order_result.get('status') in ['FILLED', 'PLACED']:
-            # Track position
-            self.position_tracker.add_position(
-                symbol=symbol,
-                token=stock['token'],
-                entry_price=entry_price,
-                quantity=quantity,
-                stop_loss=stop_loss,
-                target=target
-            )
-            
-            # Trade count is incremented here; P&L is recorded on exit
-            self.daily_stats['trades'] += 1
-            
-            self._log_activity(
-                "TRADE",
-                f"BUY {quantity} {symbol} @ ₹{entry_price:.2f}",
-                {"stop_loss": stop_loss, "target": target}
-            )
+        if order_result.get('status') == 'FILLED':
+            # Track position immediately if filled
+            self._add_to_tracker(symbol, stock, entry_price, quantity, stop_loss, target)
             return True
+            
+        elif order_result.get('status') == 'PLACED':
+            # If only placed (limit order), track for polling
+            order_id = order_result.get('order_id')
+            if order_id:
+                with self._pending_lock:
+                    self.pending_orders[order_id] = {
+                        'symbol': symbol,
+                        'stock_info': stock,
+                        'entry_price': entry_price,
+                        'quantity': quantity,
+                        'stop_loss': stop_loss,
+                        'target': target,
+                        'placed_at': datetime.now()
+                    }
+                logger.info(f"⏳ Order {order_id} PLACED - Waiting for fill...")
+                return True
+        
+        return False
+        
+    def _add_to_tracker(self, symbol, stock, entry_price, quantity, stop_loss, target):
+        """Helper to add a filled position to the tracker"""
+        self.position_tracker.add_position(
+            symbol=symbol,
+            token=stock['token'],
+            entry_price=entry_price,
+            quantity=quantity,
+            stop_loss=stop_loss,
+            target=target
+        )
+        self.daily_stats['trades'] += 1
+        
+        self._log_activity(
+            "TRADE",
+            f"BUY {quantity} {symbol} @ ₹{entry_price:.2f}",
+            {"stop_loss": stop_loss, "target": target}
+        )
+
+    def _poll_pending_orders(self) -> None:
+        """Periodic task to check status of pending orders"""
+        if not self.pending_orders:
+            return
+            
+        logger.debug(f"🔍 Polling {len(self.pending_orders)} pending orders")
+        
+        with self._pending_lock:
+            order_ids = list(self.pending_orders.keys())
+            
+        for order_id in order_ids:
+            try:
+                status_info = self.order_manager.get_order_status(order_id)
+                if not status_info:
+                    continue
+                    
+                status = status_info.get('status')
+                
+                if status == 'FILLED':
+                    with self._pending_lock:
+                        details = self.pending_orders.pop(order_id)
+                        
+                    logger.success(f"✅ Order {order_id} FILLED for {details['symbol']}")
+                    self._add_to_tracker(
+                        details['symbol'],
+                        details['stock_info'],
+                        details['entry_price'],
+                        details['quantity'],
+                        details['stop_loss'],
+                        details['target']
+                    )
+                    
+                elif status in ['REJECTED', 'CANCELLED']:
+                    with self._pending_lock:
+                        details = self.pending_orders.pop(order_id)
+                    logger.warning(f"❌ Order {order_id} for {details['symbol']} was {status}")
+                    self._log_activity("ORDER", f"Order {order_id} {status}", {"symbol": details['symbol']})
+                    
+                # Handle timeout (optional)
+                elif (datetime.now() - self.pending_orders[order_id]['placed_at']).total_seconds() > 300: # 5 mins
+                    with self._pending_lock:
+                        details = self.pending_orders.pop(order_id)
+                    logger.warning(f"⏰ Order {order_id} TIMEOUT - Removing from tracking")
+                    
+            except Exception as e:
+                logger.error(f"Error polling order {order_id}: {e}")
         
         return False
     
@@ -453,7 +557,7 @@ class TradingBot:
         symbol = position['symbol']
         reason = signal['reason']
         
-        success = self.order_manager.place_sell_order(
+        order_result = self.order_manager.place_sell_order(
             symbol=symbol,
             token=position['token'],
             price=price,
@@ -461,7 +565,7 @@ class TradingBot:
             reason=reason
         )
         
-        if success: 
+        if order_result.get('status') in ['FILLED', 'PLACED']: 
             # Calculate P&L
             pnl = (price - position['entry_price']) * position['quantity']
             self.daily_stats['pnl'] += pnl
@@ -470,16 +574,19 @@ class TradingBot:
                 self.daily_stats['wins'] += 1
             else:
                 self.daily_stats['losses'] += 1
-                self. risk_manager.record_loss(abs(pnl))
+                self.risk_manager.record_loss(abs(pnl))
             
             # Remove from tracker
-            self.position_tracker. remove_position(symbol)
+            self.position_tracker.remove_position(symbol, price, reason)
             
             self._log_activity(
                 "TRADE",
                 f"SELL {position['quantity']} {symbol} @ ₹{price:.2f} | P&L: ₹{pnl:+.2f}",
                 {"reason": reason, "pnl": pnl}
             )
+            
+            # Set exit time for cooldown tracking
+            self._last_exit_time[symbol] = datetime.now()
     
     def square_off_all(self) -> None:
         """Square off all open positions (called at 3: 15 PM)"""
@@ -700,6 +807,13 @@ class TradingBot:
             "daily_report",
             timing.get("market_close", "15:30"),
             self._generate_daily_report
+        )
+        
+        # Periodic polling for pending orders (every 10 seconds)
+        self.scheduler.schedule_interval(
+            "poll_pending_orders",
+            10,
+            self._poll_pending_orders
         )
     
     def _start_monitoring(self) -> None:

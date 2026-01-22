@@ -20,7 +20,7 @@ logger.add(
 logger.add(
     "logs/bot.log",
     rotation="1 day",
-    retention="7 days",
+    retention="3 days",
     format="{time:YYYY-MM-DD HH:mm:ss} | {level:<8} | {message}",
     level="DEBUG"
 )

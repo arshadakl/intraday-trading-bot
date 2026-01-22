@@ -97,6 +97,34 @@ class PaperTrader:
             
         except Exception as e:
             logger.error(f"❌ Error saving positions: {e}")
+            
+    def _calculate_costs(self, value: float, is_buy: bool = True) -> float:
+        """
+        Calculate realistic Indian market intraday transaction costs.
+        - STT: 0.025% on Sell
+        - Transaction Charges: 0.00345%
+        - Stamp Duty: 0.003% on Buy
+        - SEBI Charges: 0.0001%
+        - GST: 18% on (Transaction Charges + SEBI)
+        """
+        stt = 0.0
+        if not is_buy:
+            stt = value * 0.00025  # 0.025% on sell side
+            
+        trans_charges = value * 0.0000345  # 0.00345%
+        
+        stamp_duty = 0.0
+        if is_buy:
+            stamp_duty = value * 0.00003  # 0.003% on buy side
+            
+        sebi_charges = value * 0.000001  # 0.0001% (₹10/crore)
+        
+        # GST 18% on (Brokerage + Transaction Charges + SEBI)
+        # Assuming ₹0 brokerage for intraday (like some discount brokers)
+        gst = (trans_charges + sebi_charges) * 0.18
+        
+        total_costs = stt + trans_charges + stamp_duty + sebi_charges + gst
+        return total_costs
     
     def _load_positions(self) -> None:
         """Load persisted positions from JSON file on startup"""
@@ -193,8 +221,13 @@ class PaperTrader:
         )
         
         self.positions[symbol] = position
-        self.available_balance -= order_value
+        
+        # Deduct costs
+        costs = self._calculate_costs(order_value, is_buy=True)
+        self.available_balance -= (order_value + costs)
         self.trade_count += 1
+        
+        logger.info(f"💰 BUY Costs: ₹{costs:.2f} | Total Deduced: ₹{(order_value + costs):,.2f}")
         
         # Persist positions to JSON
         self._save_positions()
@@ -237,9 +270,13 @@ class PaperTrader:
         )
         self.trades.append(trade)
         
-        # Update balance with slippage-adjusted price
-        self.available_balance += executed_price * position.quantity
-        self.daily_pnl += pnl
+        # Update balance with slippage-adjusted price and deduct costs
+        sale_value = executed_price * position.quantity
+        costs = self._calculate_costs(sale_value, is_buy=False)
+        self.available_balance += (sale_value - costs)
+        self.daily_pnl += (pnl - costs)
+        
+        logger.info(f"💰 SELL Costs: ₹{costs:.2f} | Net Sale: ₹{(sale_value - costs):,.2f}")
         
         # Remove position
         del self.positions[symbol]
