@@ -32,6 +32,7 @@ data/trades/
 data/reports/
 logs/*.log
 data/*
+logs/*
 
 # IDE
 .vscode/
