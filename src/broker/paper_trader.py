@@ -1,11 +1,13 @@
-"""Paper Trading Simulator"""
+"""Paper Trading Simulator - Simulates trades without real money"""
 
+import json
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 from loguru import logger
-import json
-from pathlib import Path
+
+from src.utils.timezone import now_ist, now_ist_date
 
 
 @dataclass

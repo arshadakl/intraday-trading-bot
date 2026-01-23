@@ -66,11 +66,6 @@ from src.utils.timezone import IST
 # Configure logging with IST timestamps
 logger.remove()
 
-# Custom time function for loguru to use IST
-def ist_time_func(record, format_string):
-    from datetime import datetime
-    return datetime.now(IST).strftime(format_string)
-
 logger.add(
     sys.stdout,
     format="<green>{time:HH:mm:ss}</green> | <level>{level:<8}</level> | <cyan>{message}</cyan>",
@@ -84,8 +79,9 @@ logger.add(
     level="DEBUG"
 )
 
-# Patch loguru's time to use IST
-logger.configure(patcher=lambda record: record.update(time=ist_time_func(record, "%Y-%m-%d %H:%M:%S")))
+# Patch loguru's time to use IST - return datetime object, not formatted string
+from datetime import datetime as dt
+logger.configure(patcher=lambda record: record.update(time=dt.now(IST)))
 
 
 def main():
