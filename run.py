@@ -60,10 +60,8 @@ Path("data/daily").mkdir(parents=True, exist_ok=True)
 Path("data/trades").mkdir(parents=True, exist_ok=True)
 Path("data/reports").mkdir(parents=True, exist_ok=True)
 
-# Import IST timezone utility for logging
-from src.utils.timezone import IST
 
-# Configure logging with IST timestamps
+# Configure logging
 logger.remove()
 
 logger.add(
@@ -78,10 +76,6 @@ logger.add(
     format="{time:YYYY-MM-DD HH:mm:ss} IST | {level:<8} | {message}",
     level="DEBUG"
 )
-
-# Patch loguru's time to use IST - return datetime object, not formatted string
-from datetime import datetime as dt
-logger.configure(patcher=lambda record: record.update(time=dt.now(IST)))
 
 
 def main():
