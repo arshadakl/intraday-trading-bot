@@ -5,6 +5,8 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass, field, asdict
 from loguru import logger
 
+from src.utils.timezone import now_ist
+
 
 @dataclass
 class Position:
@@ -68,7 +70,7 @@ class PositionTracker:
             quantity=quantity,
             stop_loss=stop_loss,
             target=target,
-            entry_time=datetime.now(),
+            entry_time=now_ist(),
             current_price=entry_price
         )
         
@@ -106,7 +108,7 @@ class PositionTracker:
         # Create closed position record
         closed = position.to_dict()
         closed['exit_price'] = exit_price
-        closed['exit_time'] = datetime.now().isoformat()
+        closed['exit_time'] = now_ist().isoformat()
         closed['exit_reason'] = reason
         
         self.closed_positions.append(closed)

@@ -1,8 +1,10 @@
-"""Order Manager - Handles all order placement and routing"""
+"""Order Manager - Handles order execution and tracking"""
 
 from datetime import datetime
 from typing import Dict, List, Optional
 from loguru import logger
+
+from src.utils.timezone import now_ist
 
 from src.core.config_manager import get_config
 from src.broker.angel_client import AngelOneClient
@@ -60,7 +62,7 @@ class OrderManager:
             'quantity': quantity,
             'stop_loss': stop_loss,
             'target': target,
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': now_ist().isoformat(),
             'status': 'PENDING'
         }
         
@@ -76,7 +78,7 @@ class OrderManager:
                     target=target
                 )
                 order['status'] = 'FILLED' if success else 'REJECTED'
-                order['order_id'] = f"PAPER_{datetime.now().strftime('%H%M%S')}"
+                order['order_id'] = f"PAPER_{now_ist().strftime('%H%M%S')}"
                 order['mode'] = 'paper'
                 
             else:
@@ -139,7 +141,7 @@ class OrderManager:
             'price': price,
             'quantity': quantity,
             'reason': reason,
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': now_ist().isoformat(),
             'status': 'PENDING'
         }
         
@@ -152,7 +154,7 @@ class OrderManager:
                     reason=reason
                 )
                 order['status'] = 'FILLED' if success else 'REJECTED'
-                order['order_id'] = f"PAPER_{datetime.now().strftime('%H%M%S')}"
+                order['order_id'] = f"PAPER_{now_ist().strftime('%H%M%S')}"
                 order['mode'] = 'paper'
                 
             else:
