@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from typing import Callable, Optional
 from loguru import logger
 
+from src.utils.timezone import now_ist, now_ist_time
+
 
 class TradingScheduler: 
     """Manages the daily trading schedule"""
@@ -76,21 +78,21 @@ class TradingScheduler:
     
     def is_market_hours(self) -> bool:
         """Check if current time is within market hours"""
-        now = datetime.now().time()
+        now = now_ist_time()
         market_open = datetime. strptime("09:15", "%H:%M").time()
         market_close = datetime.strptime("15:30", "%H:%M").time()
         return market_open <= now <= market_close
     
     def is_trading_hours(self, no_new_trade_after: str = "15:00") -> bool:
         """Check if current time allows new trades"""
-        now = datetime. now().time()
+        now = now_ist_time()
         market_open = datetime.strptime("09:15", "%H:%M").time()
         cutoff = datetime.strptime(no_new_trade_after, "%H:%M").time()
         return market_open <= now <= cutoff
     
     def time_until(self, time_str: str) -> timedelta:
         """Get time remaining until a specific time today"""
-        now = datetime.now()
+        now = now_ist()
         target = datetime.strptime(time_str, "%H:%M").replace(
             year=now.year, month=now.month, day=now.day
         )

@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from typing import Dict, Optional
 from datetime import datetime
 
+from src.utils.timezone import now_ist, now_ist_time
+
 
 class BaseStrategy(ABC):
     """
@@ -92,7 +94,7 @@ class BaseStrategy(ABC):
         Returns:
             True if within trading hours
         """
-        now = datetime.now().time()
+        now = now_ist_time()
         start = datetime.strptime(start_time, "%H:%M").time()
         end = datetime.strptime(end_time, "%H:%M").time()
         return start <= now <= end
@@ -108,7 +110,7 @@ class BaseStrategy(ABC):
             True if still in volatility period
         """
         from datetime import timedelta
-        now = datetime.now()
+        now = now_ist()
         market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
         buffer_end = market_open + timedelta(minutes=start_buffer)
         return now < buffer_end

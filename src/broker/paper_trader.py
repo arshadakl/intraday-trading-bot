@@ -1,11 +1,13 @@
-"""Paper Trading Simulator"""
+"""Paper Trading Simulator - Simulates trades without real money"""
 
+import json
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 from loguru import logger
-import json
-from pathlib import Path
+
+from src.utils.timezone import now_ist, now_ist_date
 
 
 @dataclass
@@ -72,7 +74,7 @@ class PaperTrader:
         """Save open positions to JSON file for persistence"""
         try:
             positions_data = {
-                'updated_at': datetime.now().isoformat(),
+                'updated_at': now_ist().isoformat(),
                 'available_balance': self.available_balance,
                 'daily_pnl': self.daily_pnl,
                 'positions': {
@@ -194,8 +196,8 @@ class PaperTrader:
         target: float
     ) -> bool:
         """Simulate a buy order with realistic slippage"""
-        # Simulate slippage (0.05% - buy executes slightly higher)
-        slippage_percent = 0.0005  # 0.05%
+        # Simulate realistic slippage for Indian markets (0.2% - buy executes slightly higher)
+        slippage_percent = 0.002  # 0.2% realistic slippage
         executed_price = price * (1 + slippage_percent)
         
         order_value = executed_price * quantity
@@ -214,7 +216,7 @@ class PaperTrader:
             token=token,
             entry_price=executed_price,
             quantity=quantity,
-            entry_time=datetime.now(),
+            entry_time=now_ist(),
             stop_loss=stop_loss,
             target=target,
             current_price=executed_price
@@ -247,7 +249,7 @@ class PaperTrader:
         
         position = self.positions[symbol]
         
-        # Simulate slippage (0.05% - sell executes slightly lower)
+        # Simulate realistic slippage for Indian markets (0.2% - sell executes slightly lower)
         slippage_percent = 0.0005  # 0.05%
         executed_price = price * (1 - slippage_percent)
         
@@ -263,7 +265,7 @@ class PaperTrader:
             exit_price=executed_price,
             quantity=position.quantity,
             entry_time=position.entry_time,
-            exit_time=datetime.now(),
+            exit_time=now_ist(),
             pnl=pnl,
             pnl_percent=pnl_percent,
             exit_reason=reason
@@ -334,7 +336,7 @@ class PaperTrader:
     
     def get_trades_today(self) -> List[Dict]:
         """Get today's trades"""
-        today = datetime.now().date()
+        today = now_ist_date()
         return [
             {
                 "symbol": trade.symbol,
@@ -369,7 +371,7 @@ class PaperTrader:
     
     def save_daily_report(self) -> None:
         """Save daily trading report to file"""
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = now_ist().strftime("%Y-%m-%d")
         report = {
             "date": today,
             "summary": self.get_daily_summary(),
