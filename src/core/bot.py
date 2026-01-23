@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from loguru import logger
 
+from src.utils.timezone import now_ist, now_ist_time
+
 from src.core.config_manager import get_config, ConfigManager
 from src.core.scheduler import TradingScheduler
 from src.broker.angel_client import AngelOneClient
@@ -87,8 +89,8 @@ class TradingBot:
         """Add an entry to the activity log"""
         with self._log_lock:
             entry = {
-                "timestamp": datetime.now().isoformat(),
-                "time": datetime.now().strftime("%H:%M:%S"),
+                "timestamp": now_ist().isoformat(),
+                "time": now_ist().strftime("%H:%M:%S"),
                 "category": category,
                 "message":  message,
                 "data": data or {}
@@ -248,7 +250,7 @@ class TradingBot:
             analyzed_stocks = self.pre_market_analyzer.analyze_all_stocks()
             
             # Update market analysis for dashboard
-            self.market_analysis["analyzed_at"] = datetime.now().isoformat()
+            self.market_analysis["analyzed_at"] = now_ist().isoformat()
             self.market_analysis["total_stocks_analyzed"] = len(analyzed_stocks)
             
             # Score and rank stocks using the StockScorer
@@ -359,7 +361,7 @@ class TradingBot:
                     # Check signal cooldown to prevent race condition
                     last_signal = self._last_signal_time.get(symbol)
                     if last_signal:
-                        time_since_signal = (datetime.now() - last_signal).total_seconds()
+                        time_since_signal = (now_ist() - last_signal).total_seconds()
                         if time_since_signal < self._signal_cooldown_seconds:
                             return  # Skip - too soon after last signal
                     
@@ -375,9 +377,27 @@ class TradingBot:
                     can_trade, reason = self.risk_manager.can_trade()
                     
                     if signal and can_trade:
+<<<<<<< Updated upstream
+=======
+                        # [CRITICAL] Check if we already have a pending order for this symbol
+                        with self._pending_lock:
+                            is_pending = any(o['symbol'] == symbol for o in self.pending_orders.values())
+                        
+                        if is_pending:
+                            logger.debug(f"⏳ Skipping entry for {symbol}: Order already pending")
+                            return
+                            
+                        # [CRITICAL] Check exit cooldown
+                        last_exit = self._last_exit_time.get(symbol)
+                        if last_exit:
+                            if (now_ist() - last_exit).total_seconds() < (self._exit_cooldown_minutes * 60):
+                                logger.debug(f"⏳ Skipping entry for {symbol}: In exit cooldown")
+                                return
+                        
+>>>>>>> Stashed changes
                         success = self._execute_entry(stock_info, signal)
                         if success:
-                            self._last_signal_time[symbol] = datetime.now()  # Only set cooldown on success
+                            self._last_signal_time[symbol] = now_ist()  # Only set cooldown on success
             
             # Check for exit signals (if in position)
             else:
@@ -445,6 +465,93 @@ class TradingBot:
                 {"stop_loss": stop_loss, "target": target}
             )
             return True
+<<<<<<< Updated upstream
+=======
+            
+        elif order_result.get('status') == 'PLACED':
+            # If only placed (limit order), track for polling
+            order_id = order_result.get('order_id')
+            if order_id:
+                with self._pending_lock:
+                    self.pending_orders[order_id] = {
+                        'symbol': symbol,
+                        'stock_info': stock,
+                        'entry_price': entry_price,
+                        'quantity': quantity,
+                        'stop_loss': stop_loss,
+                        'target': target,
+                        'placed_at': now_ist()
+                    }
+                logger.info(f"⏳ Order {order_id} PLACED - Waiting for fill...")
+                return True
+        
+        return False
+        
+    def _add_to_tracker(self, symbol, stock, entry_price, quantity, stop_loss, target):
+        """Helper to add a filled position to the tracker"""
+        self.position_tracker.add_position(
+            symbol=symbol,
+            token=stock['token'],
+            entry_price=entry_price,
+            quantity=quantity,
+            stop_loss=stop_loss,
+            target=target
+        )
+        self.daily_stats['trades'] += 1
+        
+        self._log_activity(
+            "TRADE",
+            f"BUY {quantity} {symbol} @ ₹{entry_price:.2f}",
+            {"stop_loss": stop_loss, "target": target}
+        )
+
+    def _poll_pending_orders(self) -> None:
+        """Periodic task to check status of pending orders"""
+        if not self.pending_orders:
+            return
+            
+        logger.debug(f"🔍 Polling {len(self.pending_orders)} pending orders")
+        
+        with self._pending_lock:
+            order_ids = list(self.pending_orders.keys())
+            
+        for order_id in order_ids:
+            try:
+                status_info = self.order_manager.get_order_status(order_id)
+                if not status_info:
+                    continue
+                    
+                status = status_info.get('status')
+                
+                if status == 'FILLED':
+                    with self._pending_lock:
+                        details = self.pending_orders.pop(order_id)
+                        
+                    logger.success(f"✅ Order {order_id} FILLED for {details['symbol']}")
+                    self._add_to_tracker(
+                        details['symbol'],
+                        details['stock_info'],
+                        details['entry_price'],
+                        details['quantity'],
+                        details['stop_loss'],
+                        details['target']
+                    )
+                    
+                elif status in ['REJECTED', 'CANCELLED']:
+                    with self._pending_lock:
+                        details = self.pending_orders.pop(order_id)
+                    logger.warning(f"❌ Order {order_id} for {details['symbol']} was {status}")
+                    self._log_activity("ORDER", f"Order {order_id} {status}", {"symbol": details['symbol']})
+                    
+                # Handle timeout (optional)
+                elif (now_ist() - self.pending_orders[order_id]['placed_at']).total_seconds() > 300: # 5 mins
+                    with self._pending_lock:
+                        details = self.pending_orders.pop(order_id)
+                    logger.warning(f"⏰ Order {order_id} TIMEOUT - Removing from tracking")
+                    
+            except Exception as e:
+                logger.error(f"Error polling order {order_id}: {e}")
+>>>>>>> Stashed changes
         
         return False
     
@@ -480,6 +587,12 @@ class TradingBot:
                 f"SELL {position['quantity']} {symbol} @ ₹{price:.2f} | P&L: ₹{pnl:+.2f}",
                 {"reason": reason, "pnl": pnl}
             )
+<<<<<<< Updated upstream
+=======
+            
+            # Set exit time for cooldown tracking
+            self._last_exit_time[symbol] = now_ist()
+>>>>>>> Stashed changes
     
     def square_off_all(self) -> None:
         """Square off all open positions (called at 3: 15 PM)"""
@@ -518,7 +631,7 @@ class TradingBot:
                 return False
         
         self.status = "RUNNING"
-        self.start_time = datetime.now()
+        self.start_time = now_ist()
         
         # Reset daily stats
         self.daily_stats = {"trades": 0, "wins": 0, "losses": 0, "pnl": 0.0}
@@ -539,7 +652,7 @@ class TradingBot:
     
     def _detect_startup_mode(self) -> None:
         """Detect the startup mode based on current time"""
-        now = datetime.now().time()
+        now = now_ist_time()
         timing = self.config.get("timing", {})
         
         analysis_time = datetime.strptime(timing.get("analysis_start", "08:30"), "%H:%M").time()
@@ -792,7 +905,7 @@ class TradingBot:
     def _generate_daily_report(self) -> Dict:
         """Generate and save daily trading report"""
         report = {
-            "date": datetime.now().strftime("%Y-%m-%d"),
+            "date": now_ist().strftime("%Y-%m-%d"),
             "mode": self.config.trading_mode,
             "stats": self.daily_stats,
             "trades": self.order_manager.get_trades_today() if self.order_manager else [],
