@@ -118,9 +118,10 @@ def create_app() -> Flask:
     
     def success_response(data=None, message=None):
         """Create a success response"""
+        from src.utils.timezone import now_ist
         response = {
             'success': True,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': now_ist().isoformat()
         }
         if data is not None:
             response['data'] = data
@@ -130,11 +131,12 @@ def create_app() -> Flask:
     
     def error_response(error, code="ERROR"):
         """Create an error response"""
+        from src.utils.timezone import now_ist
         return jsonify({
             'success': False,
             'error': error,
             'code': code,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': now_ist().isoformat()
         }), 400
     
     def get_bot():
@@ -260,8 +262,9 @@ def create_app() -> Flask:
         
         stocks = bot.selected_stocks if hasattr(bot, 'selected_stocks') else []
         
+        from src.utils.timezone import now_ist
         return success_response({
-            'date': datetime.now().strftime('%Y-%m-%d'),
+            'date': now_ist().strftime('%Y-%m-%d'),
             'stocks': stocks
         })
     
@@ -305,8 +308,9 @@ def create_app() -> Flask:
                 'win_rate': stats['win_rate']
             }
         
+        from src.utils.timezone import now_ist
         return success_response({
-            'date': datetime.now().strftime('%Y-%m-%d'),
+            'date': now_ist().strftime('%Y-%m-%d'),
             'trades': trades,
             'summary': summary
         })
@@ -323,9 +327,10 @@ def create_app() -> Flask:
         
         try:
             bot.start()
+            from src.utils.timezone import now_ist
             return success_response({
                 'status': bot.status,
-                'start_time': datetime.now().isoformat()
+                'start_time': now_ist().isoformat()
             }, "Trading bot started")
         except Exception as e:
             return error_response(str(e))

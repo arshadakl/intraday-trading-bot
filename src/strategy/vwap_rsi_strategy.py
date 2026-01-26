@@ -236,8 +236,9 @@ class VWAPRSIStrategy(BaseStrategy):
                 'pnl_percent': pnl_percent
             }
         
-        # 5. TIME-BASED EXIT - Forced square-off at 3:15 PM
-        now = datetime.now().time()
+        # 5. TIME-BASED EXIT - Forced square-off at 3:15 PM IST
+        from src.utils.timezone import now_ist_time
+        now = now_ist_time()
         square_off_time = datetime.strptime("15:15", "%H:%M").time()
         
         if now >= square_off_time:

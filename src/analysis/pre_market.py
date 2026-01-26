@@ -267,8 +267,9 @@ class PreMarketAnalyzer:
         Returns:
             Dict with analysis summary
         """
+        from src.utils.timezone import now_ist
         return {
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': now_ist().isoformat(),
             'total_stocks_analyzed': len(self.analyzed_stocks),
             'stocks_selected': len(self.selected_stocks),
             'selected_stocks': [

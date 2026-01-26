@@ -214,7 +214,8 @@ class AngelOneClient:
             return None
             
         try:
-            to_date = datetime.now()
+            from src.utils.timezone import now_ist
+            to_date = now_ist()
             from_date = to_date - timedelta(days=days)
             
             params = {
