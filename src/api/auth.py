@@ -41,10 +41,11 @@ def generate_otp() -> str:
 
 def store_otp(otp: str) -> None:
     """Store OTP with timestamp"""
+    from src.utils.timezone import now_ist
     global _current_otp
     _current_otp = {
         'otp': otp,
-        'created_at': datetime.now(),
+        'created_at': now_ist(),
         'attempts': 0
     }
     logger.info(f"🔐 OTP generated and stored")
@@ -63,7 +64,8 @@ def verify_otp(code: str) -> Tuple[bool, str]:
         return False, "No OTP requested. Please request a new code."
     
     # Check expiry (10 minutes)
-    elapsed = datetime.now() - _current_otp['created_at']
+    from src.utils.timezone import now_ist
+    elapsed = now_ist() - _current_otp['created_at']
     if elapsed > timedelta(minutes=10):
         _current_otp = None
         return False, "OTP expired. Please request a new code."

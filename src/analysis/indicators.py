@@ -477,7 +477,8 @@ class LiveIndicatorManager:
         Returns:
             Dict of latest indicator values
         """
-        now = datetime.now()
+        from src.utils.timezone import now_ist
+        now = now_ist()
         ltp = float(price_data.get('ltp', 0))
         volume = float(price_data.get('volume', 0))
         

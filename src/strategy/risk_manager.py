@@ -60,10 +60,13 @@ class RiskManager:
     def can_trade(self) -> tuple[bool, str]:
         """
         Check if trading is allowed based on risk limits.
+        Uses IST timezone for market hours check.
         
         Returns:
             Tuple of (can_trade: bool, reason: str)
         """
+        from src.utils.timezone import now_ist_time
+        
         self._check_new_day()
         
         # Check 1: Daily loss limit
@@ -78,8 +81,8 @@ class RiskManager:
             logger.warning(f"🚫 {reason}")
             return False, reason
         
-        # Check 3: Market hours
-        now = datetime.now().time()
+        # Check 3: Market hours (IST)
+        now = now_ist_time()
         market_open = datetime.strptime("09:15", "%H:%M").time()
         no_new_trades = datetime.strptime("15:00", "%H:%M").time()
         
