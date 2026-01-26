@@ -248,6 +248,66 @@ class AngelOneClient:
             logger.error(f"Error fetching historical data for {symbol}: {e}")
             return None
     
+    def get_previous_day_ohlc(self, symbol: str, token: str,
+                              exchange: str = "NSE") -> Optional[Dict]:
+        """
+        Get previous day's OHLC for pivot point calculation.
+        
+        This is used during pre-market analysis to calculate daily
+        pivot points and support/resistance levels.
+        
+        Args:
+            symbol: Stock symbol
+            token: Stock token
+            exchange: Exchange (default NSE)
+        
+        Returns:
+            Dict with high, low, close, date or None if unavailable
+        """
+        if not self.is_authenticated:
+            logger.warning("Not authenticated - cannot fetch prev day OHLC")
+            return None
+        
+        try:
+            # Fetch last 3 days to handle weekends/holidays
+            data = self.get_historical_data(
+                symbol=symbol,
+                token=token,
+                interval="ONE_DAY",
+                days=5,  # Extra buffer for long weekends
+                exchange=exchange
+            )
+            
+            if not data or len(data) < 2:
+                logger.warning(
+                    f"{symbol}: Insufficient daily data for pivot calculation "
+                    f"(got {len(data) if data else 0} days)"
+                )
+                return None
+            
+            # Get second-to-last day (yesterday)
+            yesterday = data[-2]
+            
+            # Validate data
+            high = float(yesterday.get('high', 0))
+            low = float(yesterday.get('low', 0))
+            close = float(yesterday.get('close', 0))
+            
+            if high <= 0 or low <= 0 or close <= 0:
+                logger.warning(f"{symbol}: Invalid prev day OHLC data")
+                return None
+            
+            return {
+                'high': high,
+                'low': low,
+                'close': close,
+                'date': yesterday.get('timestamp', 'unknown')
+            }
+        
+        except Exception as e:
+            logger.error(f"Error fetching prev day OHLC for {symbol}: {e}")
+            return None
+    
     def place_order(
         self,
         symbol: str,

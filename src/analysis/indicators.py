@@ -492,6 +492,54 @@ class LiveIndicatorManager:
             self.vwap_stats[symbol] = {'total_pv': 0.0, 'total_volume': 0.0}
             self.current_candles[symbol] = self._reset_candle(ltp, now)
             self.current_candles[symbol]['last_total_volume'] = volume # Baseline immediately
+    
+    def is_candle_closed(self, symbol: str) -> bool:
+        """
+        Check if current 1-minute candle has closed.
+        
+        Returns True in the last 2 seconds of each minute to signal
+        that the candle is complete and ready for analysis.
+        
+        Edge cases handled:
+        - Second rollover (59→0)
+        - Symbol not initialized
+        """
+        if symbol not in self.current_candles:
+            return False
+        
+        from src.utils.timezone import now_ist
+        now = now_ist()
+        
+        # Close candle in last 2 seconds of minute
+        candle_close_buffer = 2
+        return now.second >= (60 - candle_close_buffer)
+    
+    def get_closed_candle_data(self, symbol: str) -> Optional[Dict]:
+        """
+        Get complete candle data only when candle has closed.
+        
+        This is critical for professional trading - we wait for candle
+        confirmation before generating signals, not trade on tick noise.
+        
+        Returns:
+            Dict with OHLCV data if candle is closed, None otherwise
+        """
+        if not self.is_candle_closed(symbol):
+            return None
+        
+        current = self.current_candles.get(symbol)
+        if not current:
+            return None
+        
+        return {
+            'open': current['open'],
+            'high': current['high'],
+            'low': current['low'],
+            'close': current['close'],
+            'volume': current['volume'],
+            'timestamp': current['timestamp'],
+            'is_closed': True
+        }
 
         # 2. Cumulative VWAP Update (Standard Intraday Formula)
         # Cumulative VWAP = Cumulative(Typical Price * Volume) / Cumulative(Volume)
@@ -559,6 +607,9 @@ class LiveIndicatorManager:
         
         # Override rolling VWAP with our Cumulative Daily VWAP
         latest['vwap'] = cumulative_vwap
+        
+        # Add candle data for professional signal confirmation
+        latest['candle_data'] = self.get_closed_candle_data(symbol)
         
         return latest
 

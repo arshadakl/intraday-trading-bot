@@ -1,7 +1,7 @@
 """VWAP + RSI Strategy - Main trading strategy implementation"""
 
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from loguru import logger
 
 from .base_strategy import BaseStrategy
@@ -39,16 +39,82 @@ class VWAPRSIStrategy(BaseStrategy):
         # Track recent prices for crossover detection
         self.previous_prices: Dict[str, float] = {}
         self.previous_vwap: Dict[str, float] = {}
+        
+        # Professional enhancements
+        self.price_history: Dict[str, List[float]] = {}  # For consolidation detection
+        self.price_history_size = 5  # Track last 5 candles
+        self.consolidation_threshold = self.config.get('strategy.consolidation_threshold', 0.005)  # 0.5%
+        self.volume_breakout_threshold = self.config.get('strategy.volume_breakout_threshold', 1.5)  # 1.5x
+        self.use_pivot_confluence = self.config.get('strategy.use_pivot_confluence', True)
+        self.require_pivot_confluence = self.config.get('strategy.require_pivot_confluence', False)
+    
+    def is_hugging_vwap(self, symbol: str, current_price: float, vwap: float) -> bool:
+        """
+        Detect if price is consolidating ("hugging") around VWAP.
+        
+        Professional trick: Avoid trading during low-volatility consolidation
+        phases which lead to whipsaws and false breakouts.
+        
+        Args:
+            symbol: Stock symbol
+            current_price: Current price
+            vwap: Current VWAP value
+        
+        Returns:
+            True if price is consolidating (should skip trade)
+        """
+        # Initialize history if needed
+        if symbol not in self.price_history:
+            self.price_history[symbol] = []
+        
+        # Add current price
+        self.price_history[symbol].append(current_price)
+        
+        # Keep only last N candles
+        if len(self.price_history[symbol]) > self.price_history_size:
+            self.price_history[symbol] = self.price_history[symbol][-self.price_history_size:]
+        
+        # Need at least 5 data points to  detect pattern
+        if len(self.price_history[symbol]) < self.price_history_size:
+            return False  # Not enough data, allow trade
+        
+        # Count how many prices are "hugging" VWAP (within threshold)
+        threshold = vwap * self.consolidation_threshold
+        hugging_count = sum(
+            1 for price in self.price_history[symbol]
+            if abs(price - vwap) <= threshold
+        )
+        
+        # If 4+ out of 5 are hugging, it's consolidation
+        is_consolidating = hugging_count >= 4
+        
+        if is_consolidating:
+            logger.debug(
+                f"{symbol}: Consolidating around VWAP - "
+                f"{hugging_count}/{self.price_history_size} candles within "
+                f"{self.consolidation_threshold*100:.1f}%"
+            )
+        
+        return is_consolidating
     
     def check_entry_signal(self, stock: Dict, current_price: float, 
                           indicators: Dict) -> Optional[Dict]:
         """
-        Check if VWAP + RSI entry conditions are met.
+        PROFESSIONAL-GRADE entry signal with multi-layer confirmation.
+        
+        Entry requires ALL of these filters:
+        1. ✅ Candle close above VWAP (not just tick)
+        2. ✅ NOT in consolidation phase ("hugging")
+        3. ✅ Strong volume surge (1.5x+ average)
+        4. ✅ RSI in neutral zone (40-70)
+        5. ✅ (Optional) Pivot point confluence
+        
+        This dramatically reduces false signals and whipsaws.
         
         Args:
-            stock: Stock data (symbol, token, entry_price, etc.)
-            current_price: Current LTP
-            indicators: Dict with rsi, vwap, volume_ratio
+            stock: Stock data (symbol, token, pivots, etc.)
+            current_price: Current LTP (but we use candle close)
+            indicators: Dict with rsi, vwap, volume_ratio, candle_data
             
         Returns:
             Entry signal dict or None
@@ -61,94 +127,130 @@ class VWAPRSIStrategy(BaseStrategy):
         
         # Check trading time (no trades in first 15 min or after 3 PM)
         if self.is_initial_volatility_period():
-            logger.debug(f"{symbol}: Skipping - Initial volatility period")
+            logger.debug(f"{symbol}: Initial volatility period")
             return None
         
         if not self.is_trading_time("09:30", "15:00"):
-            logger.debug(f"{symbol}: Skipping - Outside trading hours")
+            logger.debug(f"{symbol}: Outside trading hours")
             return None
         
         # Get indicator values
         rsi = indicators.get('rsi', 50)
         vwap = indicators.get('vwap', current_price)
         volume_ratio = indicators.get('volume_ratio', 1)
+        candle_data = indicators.get('candle_data')  # Professional: wait for candle
+        pivots = stock.get('pivots')  # Pivot points from pre-market
         
-        # Initialize previous price tracking for NEW symbols
-        # Set initial prev_price below VWAP to detect first-tick-above-VWAP scenario
+        # ========== FILTER 1: Candle Close Confirmation ==========
+        # CRITICAL: Don't trade on tick noise, wait for candle close
+        if not candle_data or not candle_data.get('is_closed'):
+            return None  # Candle still forming, wait
+        
+        candle_close = candle_data['close']
+        
+        # Initialize previous tracking
         is_first_tick = symbol not in self.previous_prices
         if is_first_tick:
-            # Initialize with VWAP as reference - if current price is above, we treat it as a potential entry
             self.previous_prices[symbol] = vwap  # Use VWAP as baseline
             self.previous_vwap[symbol] = vwap
         
-        # Get previous price for crossover detection
         prev_price = self.previous_prices.get(symbol, vwap)
         prev_vwap = self.previous_vwap.get(symbol, vwap)
         
-        # Update tracking AFTER getting previous values
-        self.previous_prices[symbol] = current_price
+        # Update tracking (use candle close, not LTP)
+        self.previous_prices[symbol] = candle_close
         self.previous_vwap[symbol] = vwap
         
-        # ============ ENTRY CONDITIONS ============
+        # ========== FILTER 2: VWAP Crossover ==========
+        price_crossed_above = prev_price <= prev_vwap and candle_close > vwap
+        first_tick_above_vwap = is_first_tick and candle_close > vwap
         
-        # 1a. Price crosses ABOVE VWAP (bullish crossover)
-        price_crossed_above_vwap = prev_price <= prev_vwap and current_price > vwap
+        if not (price_crossed_above or first_tick_above_vwap):
+            return None  # No VWAP cross, no entry
         
-        # 1b. OR price is already above VWAP on first tick (stock opened above VWAP)
-        first_tick_above_vwap = is_first_tick and current_price > vwap
-        
-        # 1c. Price is currently above VWAP (for momentum confirmation)
-        price_above_vwap = current_price > vwap
-        
-        # 2. RSI in neutral zone (40-60) - not overbought/oversold
-        rsi_in_range = self.rsi_oversold <= rsi <= self.rsi_overbought
-        
-        # 3. Volume is above average (liquidity check)
-        # Relaxed: accept volume_ratio >= 0.8 instead of strict > 1.0
-        volume_confirmed = volume_ratio >= 0.8
-        
-        # Log conditions for debugging (always log, not just debug)
-        if price_above_vwap:
+        # ========== FILTER 3: Consolidation Detection ==========
+        # Professional trick: Skip "hugging" phase (whipsaw zone)
+        if self.is_hugging_vwap(symbol, candle_close, vwap):
             logger.info(
-                f"📊 {symbol}: LTP=₹{current_price:.2f}, VWAP=₹{vwap:.2f}, "
-                f"RSI={rsi:.1f}, Vol={volume_ratio:.2f}, "
-                f"Crossover={price_crossed_above_vwap}, FirstTick={is_first_tick}"
+                f"{symbol}: ⏸️  SKIPPED - Price consolidating around VWAP "
+                f"(whipsaw zone)"
             )
+            return None
         
-        # ENTRY TRIGGER: Crossover OR first-tick-above-VWAP, with RSI and volume confirmation
-        should_enter = (price_crossed_above_vwap or first_tick_above_vwap) and rsi_in_range and volume_confirmed
+        # ========== FILTER 4: Volume Surge ==========
+        # Professional standard: 1.5x minimum for breakout confirmation
+        if volume_ratio < self.volume_breakout_threshold:
+            logger.debug(
+                f"{symbol}: Weak volume {volume_ratio:.2f}x "
+                f"(need {self.volume_breakout_threshold}x+ for breakout)"
+            )
+            return None
         
-        if should_enter:
-            # Calculate entry points with ATR for dynamic risk management
-            atr = indicators.get('atr', 0)
-            entry_points = self.calculate_entry_points({
-                'close': current_price,
+        # ========== FILTER 5: RSI Zone ==========
+        if not (self.rsi_oversold <= rsi <= self.rsi_overbought):
+            logger.debug(
+                f"{symbol}: RSI {rsi:.1f} outside neutral zone "
+                f"({self.rsi_oversold}-{self.rsi_overbought})"
+            )
+            return None
+        
+        # ========== FILTER 6: Pivot Confluence (Optional) ==========
+        entry_reason = "VWAP Crossover" if price_crossed_above else "Above VWAP Entry"
+        has_pivot_confluence = False
+        
+        if pivots and self.use_pivot_confluence:
+            from src.analysis.pivot_calculator import PivotPointCalculator
+            calc = PivotPointCalculator()
+            
+            has_confluence, pivot_reason = calc.check_pivot_confluence(
+                current_price=candle_close,
+                vwap=vwap,
+                pivots=pivots
+            )
+            
+            if has_confluence:
+                entry_reason = pivot_reason  # Upgrade to double confirmation
+                has_pivot_confluence = True
+                logger.info(
+                    f"🎯 {symbol}: DOUBLE CONFIRMATION - {pivot_reason}"
+                )
+            else:
+                # STRICT MODE: Require pivot confluence if enabled
+                if self.require_pivot_confluence:
+                    logger.debug(f"{symbol}: No pivot confluence (strict mode)")
+                    return None
+        
+        # ========== ALL FILTERS PASSED - GENERATE SIGNAL ==========
+        atr = indicators.get('atr', 0)
+        entry_points = self.calculate_entry_points({
+            'close': candle_close,
+            'vwap': vwap,
+            'atr': atr
+        })
+        
+        logger.info(
+            f"📈 ENTRY SIGNAL: {symbol} | {entry_reason} | "
+            f"Price=₹{candle_close:.2f} VWAP=₹{vwap:.2f} | "
+            f"RSI={rsi:.1f} Vol={volume_ratio:.2f}x ATR={atr:.2f} | "
+            f"{'✅ Pivot' if has_pivot_confluence else '⚪ No Pivot'}"
+        )
+        
+        return {
+            'action': 'BUY',
+            'entry_price': candle_close,  # Use candle close, not tick
+            'stop_loss': entry_points['stop_loss'],
+            'target': entry_points['target_price'],
+            'reason': entry_reason,
+            'indicators': {
+                'rsi': rsi,
                 'vwap': vwap,
-                'atr': atr  # Pass ATR for dynamic SL/Target
-            })
-            
-            entry_reason = "VWAP Crossover" if price_crossed_above_vwap else "Above VWAP Entry"
-            
-            logger.info(
-                f"📈 ENTRY SIGNAL: {symbol} | "
-                f"{entry_reason} | RSI={rsi:.1f} | VolRatio={volume_ratio:.2f} | ATR={atr:.2f}"
-            )
-            
-            return {
-                'action': 'BUY',
-                'entry_price': current_price,
-                'stop_loss': entry_points['stop_loss'],
-                'target': entry_points['target_price'],
-                'reason': entry_reason,
-                'indicators': {
-                    'rsi': rsi,
-                    'vwap': vwap,
-                    'volume_ratio': volume_ratio,
-                    'atr': atr
-                }
+                'volume_ratio': volume_ratio,
+                'atr': atr,
+                'candle': candle_data,
+                'pivots': pivots,
+                'has_pivot_confluence': has_pivot_confluence
             }
-        
-        return None
+        }
     
     def check_exit_signal(self, position: Dict, current_price: float, 
                          indicators: Dict) -> Optional[Dict]:
