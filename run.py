@@ -61,20 +61,32 @@ Path("data/trades").mkdir(parents=True, exist_ok=True)
 Path("data/reports").mkdir(parents=True, exist_ok=True)
 
 
-# Configure logging
+# Configure logging with IST timezone
+from src.utils.timezone import now_ist, now_ist_time
+
 logger.remove()
+
+# Custom format function for IST timestamps
+def format_ist_time(record):
+    """Format log time in IST"""
+    ist_now = now_ist()
+    record["extra"]["ist_time"] = ist_now.strftime("%Y-%m-%d %H:%M:%S")
+    record["extra"]["ist_time_short"] = ist_now.strftime("%H:%M:%S")
+    return True
 
 logger.add(
     sys.stdout,
-    format="<green>{time:HH:mm:ss}</green> | <level>{level:<8}</level> | <cyan>{message}</cyan>",
-    level="INFO"
+    format="<green>{extra[ist_time_short]}</green> | <level>{level:<8}</level> | <cyan>{message}</cyan>",
+    level="INFO",
+    filter=format_ist_time
 )
 logger.add(
     "logs/bot.log",
     rotation="1 day",
     retention="7 days",
-    format="{time:YYYY-MM-DD HH:mm:ss} IST | {level:<8} | {message}",
-    level="DEBUG"
+    format="{extra[ist_time]} IST | {level:<8} | {message}",
+    level="DEBUG",
+    filter=format_ist_time
 )
 
 
