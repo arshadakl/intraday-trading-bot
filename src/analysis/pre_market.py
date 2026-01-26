@@ -9,6 +9,7 @@ from loguru import logger
 
 from .indicators import TechnicalIndicators, prepare_dataframe, get_latest_indicators
 from .stock_scorer import StockScorer
+from .pivot_calculator import PivotPointCalculator
 from src.core.config_manager import get_config
 
 
@@ -16,6 +17,7 @@ class PreMarketAnalyzer:
     """
     Runs before market opens (8:30 AM).
     Analyzes all Nifty 50 stocks and selects top candidates for trading.
+    NOW ENHANCED: Calculates pivot points for professional signals.
     """
     
     def __init__(self, broker=None):
@@ -29,6 +31,7 @@ class PreMarketAnalyzer:
         self.config = get_config()
         self.indicators = TechnicalIndicators()
         self.scorer = StockScorer()
+        self.pivot_calculator = PivotPointCalculator()  # NEW
         
         # Load Nifty 50 stock list
         self.stocks = self._load_nifty50()
@@ -90,6 +93,29 @@ class PreMarketAnalyzer:
             # Get the latest indicator values
             latest = get_latest_indicators(df)
             
+            # ========== Calculate Pivot Points ==========
+            pivots = None
+            if self.broker:
+                prev_ohlc = self.broker.get_previous_day_ohlc(symbol, token)
+                
+                if prev_ohlc:
+                    pivots = self.pivot_calculator.calculate_standard_pivots(
+                        high=prev_ohlc['high'],
+                        low=prev_ohlc['low'],
+                        close=prev_ohlc['close']
+                    )
+                    
+                    if pivots:
+                        # Cache for use during trading hours
+                        self.pivot_calculator.cache_pivots(symbol, pivots)
+                        logger.debug(
+                            f"{symbol}: Pivots - "
+                            f"P={pivots['pivot']:.2f} R1={pivots['r1']:.2f} "
+                            f"S1={pivots['s1']:.2f}"
+                        )
+                else:
+                    logger.warning(f"{symbol}: No previous day OHLC for pivots")
+            
             # Prepare data for scoring
             stock_data = {
                 'symbol': symbol,
@@ -101,7 +127,8 @@ class PreMarketAnalyzer:
                 'ema_9': float(latest.get('ema_9', 0)),
                 'ema_21': float(latest.get('ema_21', 0)),
                 'atr': float(latest.get('atr', 0)),
-                'volume_ratio': float(latest.get('volume_ratio', 1))
+                'volume_ratio': float(latest.get('volume_ratio', 1)),
+                'pivots': pivots  # NEW: Include pivot points
             }
             
             logger.debug(f"📊 Analyzed {symbol}: RSI={stock_data['rsi']:.1f}, ATR={stock_data['atr']:.2f}")
