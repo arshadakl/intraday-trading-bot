@@ -48,7 +48,7 @@ class TradingBot:
         self.strategy: Optional[VWAPRSIStrategy] = None
         self.risk_manager: Optional[RiskManager] = None
         self.order_manager: Optional[OrderManager] = None
-        self. position_tracker: Optional[PositionTracker] = None
+        self.position_tracker: Optional[PositionTracker] = None
         self.live_indicators = LiveIndicatorManager()
         
         # State
@@ -71,7 +71,7 @@ class TradingBot:
         }
         
         # Activity log (for dashboard)
-        self.activity_log:  List[Dict] = []
+        self.activity_log: List[Dict] = []
         self._log_lock = threading.Lock()
         
         # Signal cooldown tracking (prevents race condition)
@@ -113,13 +113,13 @@ class TradingBot:
     def get_activity_log(self, limit: int = 50) -> List[Dict]:
         """Get recent activity log entries"""
         with self._log_lock:
-            return self.activity_log[-limit:][: :-1]  # Return newest first
+            return self.activity_log[-limit:][::-1]  # Return newest first
     
     # ==================== Initialization ====================
     
     def initialize(self) -> bool:
         """Initialize all components and connect to broker"""
-        self. status = "INITIALIZING"
+        self.status = "INITIALIZING"
         self._log_activity("SYSTEM", "Initializing bot components...")
         
         try:
@@ -134,7 +134,7 @@ class TradingBot:
             
             # Get account info
             profile = self.angel_client.get_profile()
-            if profile: 
+            if profile:
                 logger.info(f"👤 Logged in as: {profile.get('name', 'Unknown')}")
                 self._log_activity("AUTH", f"Logged in as {profile.get('name')}")
             
@@ -193,11 +193,11 @@ class TradingBot:
     
     def _calculate_trading_capital(self, total_balance: float) -> float:
         """Calculate trading capital based on config"""
-        if self.config. get("capital.use_percentage"):
+        if self.config.get("capital.use_percentage"):
             percentage = self.config.get("capital.trading_percentage", 50)
             return total_balance * (percentage / 100)
         else:
-            fixed = self.config.get("capital. fixed_amount") or total_balance
+            fixed = self.config.get("capital.fixed_amount") or total_balance
             return min(fixed, total_balance)
     
     def _sync_positions_from_paper_trader(self) -> None:
@@ -370,9 +370,10 @@ class TradingBot:
     # ==================== Trading Loop ====================
     
     def _on_price_update(self, symbol: str, price_data: Dict) -> None:
-        """Handle real-time price updates from WebSocket"""
+        """Callback for real-time price updates"""
+        indicators = None
         try:
-            current_price = price_data.get('ltp', 0)
+            current_price = float(price_data.get('ltp', 0))
             
             # Update position tracker
             self.position_tracker.update_price(symbol, current_price)
@@ -394,8 +395,16 @@ class TradingBot:
                     # Get real-time dynamic indicators
                     indicators = self.live_indicators.update(symbol, price_data)
                     
+                    # [CRITICAL] Safety check for indicators
+                    if not isinstance(indicators, dict):
+                        logger.error(f"❌ {symbol}: indicators is {type(indicators)} instead of dict. Content: {indicators}")
+                        return
+                        
                     # Update stock_info with latest indicators for dashboard/logging
-                    stock_info.update(indicators)
+                    try:
+                        stock_info.update(indicators)
+                    except Exception as e:
+                        logger.debug(f"⚠️ {symbol}: Info update skipped: {e}")
                     
                     signal = self.strategy.check_entry_signal(stock_info, current_price, indicators)
                     can_trade, reason = self.risk_manager.can_trade()
@@ -428,12 +437,15 @@ class TradingBot:
                 indicators = self.live_indicators.update(symbol, price_data)
                 
                 if not isinstance(indicators, dict):
+                    logger.error(f"❌ {symbol}: exit indicators is {type(indicators)}. Content: {indicators}")
                     return
                 
-                # Update stock_info with latest indicators
+                # Update stock_info if it exists for this symbol (optional but good for dashboard)
+                # This ensures dashboard shows latest indicators for held positions too
                 stock_info = next((s for s in self.selected_stocks if s['symbol'] == symbol), None)
                 if stock_info:
-                    try: stock_info.update(indicators)
+                    try:
+                        stock_info.update(indicators)
                     except: pass
                 
                 signal = self.strategy.check_exit_signal(position, current_price, indicators)
@@ -441,7 +453,17 @@ class TradingBot:
                     self._execute_exit(position, signal, current_price)
                     
         except Exception as e: 
-            logger.error(f"Price update error for {symbol}: {e}")
+            import traceback
+            err_msg = str(e)
+            if "NoneType" in err_msg and "iterable" in err_msg:
+                # Extra debug for the infamous NoneType error
+                try:
+                    logger.error(f"DETECTED NONETYPE ITERATION ERROR for {symbol}")
+                    logger.error(f"Indicators: {indicators if 'indicators' in locals() else 'NOT DEFINED'}")
+                    logger.error(f"Price Data: {price_data}")
+                except: pass
+            
+            logger.error(f"Price update error for {symbol}: {e}\n{traceback.format_exc()}")
     
     def _execute_entry(self, stock: Dict, signal: Dict) -> bool:
         """Execute an entry order"""
@@ -550,18 +572,21 @@ class TradingBot:
                     logger.warning(f"❌ Order {order_id} for {details['symbol']} was {status}")
                     self._log_activity("ORDER", f"Order {order_id} {status}", {"symbol": details['symbol']})
                     
-                # Handle timeout (optional)
-                elif (now_ist() - self.pending_orders[order_id]['placed_at']).total_seconds() > 300: # 5 mins
+                # Handle timeout (optional) - check within lock to avoid race condition
+                else:
                     with self._pending_lock:
-                        details = self.pending_orders.pop(order_id)
-                    logger.warning(f"⏰ Order {order_id} TIMEOUT - Removing from tracking")
+                        if order_id in self.pending_orders:
+                            placed_at = self.pending_orders[order_id].get('placed_at')
+                            if placed_at and (now_ist() - placed_at).total_seconds() > 300:  # 5 mins
+                                details = self.pending_orders.pop(order_id)
+                                logger.warning(f"⏰ Order {order_id} TIMEOUT - Removing from tracking")
                     
             except Exception as e:
                 logger.error(f"Error polling order {order_id}: {e}")
         
-        return False
+        return None
     
-    def _execute_exit(self, position: Dict, signal:  Dict, price: float) -> None:
+    def _execute_exit(self, position: Dict, signal: Dict, price: float) -> None:
         """Execute an exit order"""
         symbol = position['symbol']
         reason = signal['reason']
@@ -574,7 +599,7 @@ class TradingBot:
             reason=reason
         )
         
-        if order_result.get('status') in ['FILLED', 'PLACED']: 
+        if order_result.get('status') in ['FILLED', 'PLACED']:
             # Calculate P&L
             pnl = (price - position['entry_price']) * position['quantity']
             self.daily_stats['pnl'] += pnl
@@ -583,7 +608,11 @@ class TradingBot:
                 self.daily_stats['wins'] += 1
             else:
                 self.daily_stats['losses'] += 1
-                self.risk_manager.record_loss(abs(pnl))
+                # Note: Do NOT call risk_manager.record_loss here as it would double-count
+                # Risk manager tracks its own stats internally
+            
+            # Update risk manager with the trade result
+            self.risk_manager.record_trade(pnl)
             
             # Remove from tracker
             self.position_tracker.remove_position(symbol, price, reason)
@@ -598,7 +627,7 @@ class TradingBot:
             self._last_exit_time[symbol] = now_ist()
     
     def square_off_all(self) -> None:
-        """Square off all open positions (called at 3: 15 PM)"""
+        """Square off all open positions (called at 3:15 PM)"""
         logger.info("🔴 Squaring off all positions...")
         self._log_activity("SYSTEM", "Initiating square off of all positions")
         
@@ -611,7 +640,7 @@ class TradingBot:
                     position['symbol'],
                     position['token']
                 )
-                if current_price: 
+                if current_price:
                     self._execute_exit(
                         position,
                         {"reason": "SQUARE_OFF"},
@@ -797,6 +826,13 @@ class TradingBot:
             self.run_pre_market_analysis
         )
         
+        # Reset daily state just before market open
+        self.scheduler.schedule_task(
+            "daily_reset",
+            "09:14",
+            self._reset_daily_state
+        )
+        
         # Start monitoring at market open
         self.scheduler.schedule_task(
             "start_monitoring",
@@ -824,6 +860,32 @@ class TradingBot:
             10,
             self._poll_pending_orders
         )
+    
+    def _reset_daily_state(self) -> None:
+        """Reset daily state before market opens"""
+        logger.info("🔄 Resetting daily state...")
+        
+        # Reset daily stats
+        self.daily_stats = {
+            'trades': 0, 'wins': 0, 'losses': 0, 'pnl': 0.0
+        }
+        
+        # Reset strategy state
+        if self.strategy and hasattr(self.strategy, 'reset_daily'):
+            self.strategy.reset_daily()
+        
+        # Reset risk manager
+        if self.risk_manager:
+            self.risk_manager.reset_daily()
+        
+        # Reset exit cooldown tracking
+        self._last_exit_time.clear()
+        
+        # Reset live indicators for fresh cumulative VWAP
+        if self.live_indicators:
+            self.live_indicators.reset_all()
+        
+        self._log_activity("SYSTEM", "Daily state reset complete")
     
     def _start_monitoring(self) -> None:
         """Start WebSocket monitoring for selected stocks"""
@@ -860,7 +922,7 @@ class TradingBot:
     def pause(self) -> bool:
         """Pause trading (keep monitoring but don't trade)"""
         if self.status != "RUNNING":
-            logger. warning("⚠️ Bot is not running")
+            logger.warning("⚠️ Bot is not running")
             return False
         
         self.status = "PAUSED"
@@ -871,7 +933,7 @@ class TradingBot:
     def resume(self) -> bool:
         """Resume trading"""
         if self.status != "PAUSED":
-            logger. warning("⚠️ Bot is not paused")
+            logger.warning("⚠️ Bot is not paused")
             return False
         
         self.status = "RUNNING"
@@ -886,10 +948,10 @@ class TradingBot:
             self.square_off_all()
         
         # Stop scheduler
-        self.scheduler. stop()
+        self.scheduler.stop()
         
         # Disconnect WebSocket
-        if self. websocket:
+        if self.websocket:
             self.websocket.disconnect()
         
         # Generate report
@@ -928,7 +990,7 @@ class TradingBot:
             json.dump(report, f, indent=2, default=str)
         
         logger.info(f"📋 Daily report saved to {filepath}")
-        self._log_activity("REPORT", f"Daily report generated.  P&L: ₹{self.daily_stats['pnl']:+.2f}")
+        self._log_activity("REPORT", f"Daily report generated. P&L: ₹{self.daily_stats['pnl']:+.2f}")
         
         return report
     
@@ -958,7 +1020,7 @@ class TradingBot:
         if self.config.is_paper_mode and self.paper_trader:
             summary = self.paper_trader.get_daily_summary()
             return {
-                "total_balance": summary. get("current_balance", 0),
+                "total_balance": summary.get("current_balance", 0),
                 "available_balance": summary.get("available_balance", 0),
                 "used_margin": summary.get("current_balance", 0) - summary.get("available_balance", 0),
                 "daily_pnl": summary.get("daily_pnl", 0)
@@ -968,7 +1030,7 @@ class TradingBot:
             funds = self.angel_client.get_funds()
             if funds:
                 return {
-                    "total_balance": float(funds. get("net", 0)),
+                    "total_balance": float(funds.get("net", 0)),
                     "available_balance": float(funds.get("availablecash", 0)),
                     "used_margin": float(funds.get("utiliseddebits", 0)),
                     "daily_pnl": self.daily_stats.get("pnl", 0)
@@ -976,29 +1038,29 @@ class TradingBot:
         
         return {
             "total_balance": 0,
-            "available_balance":  0,
+            "available_balance": 0,
             "used_margin": 0,
             "daily_pnl": 0
         }
     
     def switch_trading_mode(self, mode: str) -> bool:
         """Switch between paper and live trading mode"""
-        if mode not in ["paper", "live"]: 
+        if mode not in ["paper", "live"]:
             logger.error(f"❌ Invalid mode: {mode}")
             return False
         
         if self.status == "RUNNING":
-            logger. error("❌ Cannot switch mode while bot is running.  Stop the bot first.")
+            logger.error("❌ Cannot switch mode while bot is running. Stop the bot first.")
             return False
         
-        self.config. trading_mode = mode
+        self.config.trading_mode = mode
         
         # Reinitialize if needed
         if mode == "paper" and self.angel_client:
             balance = self.angel_client.get_available_balance()
             self.paper_trader = PaperTrader(initial_balance=balance)
         
-        logger.info(f"✅ Switched to {mode. upper()} trading mode")
+        logger.info(f"✅ Switched to {mode.upper()} trading mode")
         self._log_activity("MODE", f"Switched to {mode.upper()} trading mode")
         
         return True
@@ -1007,12 +1069,12 @@ class TradingBot:
         """Update configuration settings"""
         try:
             for key, value in updates.items():
-                self.config. set(key, value)
+                self.config.set(key, value)
             
             # Update strategy if relevant settings changed
             if self.strategy:
                 self.strategy.stop_loss_percent = self.config.stop_loss_percent
-                self. strategy.target_percent = self. config.target_percent
+                self.strategy.target_percent = self.config.target_percent
             
             logger.info(f"⚙️ Configuration updated: {updates}")
             self._log_activity("CONFIG", f"Configuration updated", updates)

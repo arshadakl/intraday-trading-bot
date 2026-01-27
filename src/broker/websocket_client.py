@@ -2,6 +2,7 @@
 
 import json
 import threading
+import time
 from typing import Callable, Optional, List, Dict
 from loguru import logger
 
@@ -78,7 +79,7 @@ class AngelWebSocket:
             self._subscribe_tokens()
     
     def _on_data(self, wsapp, message) -> None:
-        """Called when data is received"""
+        """Called when data is received - thread-safe with error isolation"""
         try:
             if isinstance(message, str):
                 data = json.loads(message)
@@ -88,58 +89,94 @@ class AngelWebSocket:
             # Extract token and price info
             token = str(data.get("token", ""))
             
-            if token:
-                price_data = {
-                    "token": token,
-                    "ltp": float(data.get("last_traded_price", 0)) / 100,
-                    "open": float(data.get("open_price_of_the_day", 0)) / 100,
-                    "high": float(data.get("high_price_of_the_day", 0)) / 100,
-                    "low": float(data.get("low_price_of_the_day", 0)) / 100,
-                    "close": float(data.get("closed_price", 0)) / 100,
-                    "volume": int(data.get("volume_trade_for_the_day", 0))
-                }
+            if not token:
+                return
                 
-                # Update cache
-                with self._lock:
-                    self._price_cache[token] = price_data
+            price_data = {
+                "token": token,
+                "ltp": float(data.get("last_traded_price", 0)) / 100,
+                "open": float(data.get("open_price_of_the_day", 0)) / 100,
+                "high": float(data.get("high_price_of_the_day", 0)) / 100,
+                "low": float(data.get("low_price_of_the_day", 0)) / 100,
+                "close": float(data.get("closed_price", 0)) / 100,
+                "volume": int(data.get("volume_trade_for_the_day", 0))
+            }
+            
+            # Update cache atomically
+            with self._lock:
+                self._price_cache[token] = price_data.copy()
+            
+            # Call callback with error isolation
+            if self.on_price_update:
+                # Find symbol for this token
+                symbol = self._get_symbol_for_token(token)
                 
-                # Call callback
-                if self.on_price_update:
-                    # Find symbol for this token
-                    symbol = self._get_symbol_for_token(token)
-                    self.on_price_update(symbol, price_data)
+                # Validate symbol and price_data before callback
+                if symbol and symbol != token and price_data.get('ltp', 0) > 0:
+                    try:
+                        self.on_price_update(symbol, price_data)
+                    except Exception as callback_err:
+                        logger.error(f"Error in price update callback for {symbol}: {callback_err}")
+                else:
+                    # Log warning if we're getting bad data (debug level to avoid spam)
+                    if not symbol or symbol == token:
+                        logger.debug(f"Skipping price update: No symbol mapping for token {token}")
+                    elif price_data.get('ltp', 0) <= 0:
+                        logger.debug(f"Skipping price update for {symbol}: Invalid LTP")
                     
+        except json.JSONDecodeError as e:
+            logger.debug(f"Failed to parse WebSocket message: {e}")
         except Exception as e:
             logger.error(f"Error processing WebSocket data: {e}")
     
     def _on_error(self, wsapp, error) -> None:
         """Called on error"""
-        logger.error(f"📡 WebSocket error: {error}")
-        if self.on_error:
-            self.on_error(str(error))
+        try:
+            logger.error(f"📡 WebSocket error: {error}")
+            if self.on_error:
+                self.on_error(str(error))
+        except Exception as e:
+            logger.error(f"Error in _on_error callback: {e}")
     
     def _on_close(self, wsapp, close_status, close_msg) -> None:
-        """Called when connection closes - attempts auto-reconnect"""
+        """Called when connection closes - attempts auto-reconnect in separate thread"""
         self.is_connected = False
         logger.warning(f"📡 WebSocket disconnected: {close_msg}")
         
-        # Auto-reconnect logic with exponential backoff
-        if self._reconnect_attempts < self._max_reconnect_attempts:
+        # Start reconnection in a separate thread to avoid blocking
+        reconnect_thread = threading.Thread(
+            target=self._attempt_reconnect,
+            daemon=True,
+            name="WebSocket-Reconnect"
+        )
+        reconnect_thread.start()
+    
+    def _attempt_reconnect(self) -> None:
+        """Non-blocking reconnection with exponential backoff"""
+        while self._reconnect_attempts < self._max_reconnect_attempts:
             self._reconnect_attempts += 1
             wait_time = min(5 * self._reconnect_attempts, 60)  # Max 60 seconds
             logger.info(f"🔄 Attempting reconnect in {wait_time}s (attempt {self._reconnect_attempts}/{self._max_reconnect_attempts})")
             
-            import time
             time.sleep(wait_time)
             
-            if self.connect():
-                logger.success("📡 WebSocket reconnected successfully!")
-                self._reconnect_attempts = 0  # Reset counter on success
-            else:
-                logger.error("📡 Reconnection failed - will retry")
-        else:
-            logger.error(f"📡 Max reconnection attempts ({self._max_reconnect_attempts}) reached.")
-            logger.info("💡 TIP: Restart the bot to try reconnecting")
+            # Check if already reconnected by another thread
+            if self.is_connected:
+                logger.info("📡 Already reconnected by another process")
+                return
+            
+            try:
+                if self.connect():
+                    logger.success("📡 WebSocket reconnected successfully!")
+                    self._reconnect_attempts = 0  # Reset counter on success
+                    return
+                else:
+                    logger.warning("📡 Reconnection attempt failed - will retry")
+            except Exception as e:
+                logger.error(f"📡 Reconnection error: {e}")
+        
+        logger.error(f"📡 Max reconnection attempts ({self._max_reconnect_attempts}) reached.")
+        logger.info("💡 TIP: Restart the bot to try reconnecting")
     
     def reset_reconnect_counter(self) -> None:
         """Reset reconnection counter to allow fresh retry attempts"""
