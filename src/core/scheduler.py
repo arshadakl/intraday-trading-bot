@@ -1,8 +1,11 @@
-"""Trading Scheduler - Manages daily trading schedule with IST timezone support"""
+"""Trading Scheduler - Manages daily trading schedule"""
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+import schedule
+import time
+import threading
 from datetime import datetime, timedelta
 from typing import Callable, Optional
 from loguru import logger
@@ -89,7 +92,7 @@ class TradingScheduler:
         logger.info("⏹️ Scheduler stopped")
     
     def is_market_hours(self) -> bool:
-        """Check if current IST time is within market hours"""
+        """Check if current time is within market hours (9:15 AM - 3:30 PM IST)"""
         now = now_ist_time()
         market_open = datetime.strptime("09:15", "%H:%M").time()
         market_close = datetime.strptime("15:30", "%H:%M").time()

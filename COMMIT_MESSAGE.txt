@@ -1,0 +1,46 @@
+fix: Add IST timezone support for worldwide deployment
+
+BREAKING CHANGE: All time-based operations now use Indian Standard Time (IST)
+regardless of server timezone, ensuring correct market hours detection globally.
+
+## Problem
+- Bot used server's local timezone (datetime.now()) for all decisions
+- Deploying to non-IST servers (AWS US, GCP EU, etc.) would cause:
+  * Incorrect market hours detection (trading when markets closed)
+  * Wrong pre-market analysis timing
+  * Inaccurate log timestamps
+  * Missed square-off deadlines
+
+## Solution
+- Created centralized timezone utility (src/utils/timezone.py)
+- Updated all datetime operations to use IST explicitly
+- Configured scheduler and loguru to use Asia/Kolkata timezone
+
+## Changes
+### New Files:
+- src/utils/timezone.py - IST timezone utilities (now_ist, now_ist_time, etc.)
+- src/utils/__init__.py - Package initialization
+
+### Modified Files:
+- run.py - Logger displays IST timestamps
+- src/core/bot.py - All time decisions use IST
+- src/core/scheduler.py - Market hours check uses IST, scheduler uses IST timezone
+- src/strategy/vwap_rsi_strategy.py - Square-off time uses IST
+- src/strategy/base_strategy.py - Import IST utilities
+- src/strategy/risk_manager.py - Market hours validation uses IST
+- src/executor/position_tracker.py - Position timestamps use IST
+- src/executor/order_manager.py - Order timestamps use IST
+- src/broker/paper_trader.py - Position tracking uses IST
+- src/analysis/pre_market.py - Analysis timestamps use IST
+
+## Impact
+✅ Bot now deploys to ANY timezone worldwide (US, EU, Asia, etc.)
+✅ Always trades during correct Indian market hours (9:15 AM - 3:30 PM IST)
+✅ Pre-market analysis runs at 8:30 AM IST regardless of server location
+✅ All logs display IST timestamps for accurate debugging
+✅ No configuration needed - IST is hardcoded
+
+## Testing
+- Verified imports work correctly
+- Tested timezone conversion with zoneinfo
+- Confirmed scheduler uses IST timezone
