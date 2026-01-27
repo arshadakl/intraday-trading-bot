@@ -414,32 +414,58 @@ def prepare_dataframe(candles: List[Dict]) -> pd.DataFrame:
     return df
 
 
+def to_native(obj):
+    """Recursively convert numpy types to native Python types for JSON serialization."""
+    if isinstance(obj, (np.float64, np.float32)):
+        return float(obj)
+    if isinstance(obj, (np.int64, np.int32)):
+        return int(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, dict):
+        return {k: to_native(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [to_native(x) for x in obj]
+    if pd.isna(obj):
+        return None
+    return obj
+
+
 def get_latest_indicators(df: pd.DataFrame) -> Dict:
     """
-    Get the latest indicator values from a DataFrame.
-    
-    Args:
-        df: DataFrame with calculated indicators
-        
-    Returns:
-        Dict with latest values of all indicators
+    Get the latest indicator values from a DataFrame with native type conversion.
     """
-    if df.empty:
-        return {}
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return {
+            "close": 0, "rsi": 50, "vwap": 0, "sma_20": 0,
+            "ema_9": 0, "ema_21": 0, "atr": 0, "volume_ratio": 1.0,
+            "price_above_vwap": False
+        }
     
-    latest = df.iloc[-1]
-    
-    return {
-        "close": latest.get("close", 0),
-        "rsi": latest.get("rsi", 50),
-        "vwap": latest.get("vwap", latest.get("close", 0)),
-        "sma_20": latest.get("sma_20", 0),
-        "ema_9": latest.get("ema_9", 0),
-        "ema_21": latest.get("ema_21", 0),
-        "atr": latest.get("atr", 0),
-        "volume_ratio": latest.get("volume_ratio", 1.0),
-        "price_above_vwap": latest.get("price_above_vwap", False)
-    }
+    try:
+        latest = df.iloc[-1]
+        
+        result = {
+            "close": latest.get("close", 0),
+            "rsi": latest.get("rsi", 50),
+            "vwap": latest.get("vwap", latest.get("close", 0)),
+            "sma_20": latest.get("sma_20", 0),
+            "ema_9": latest.get("ema_9", 0),
+            "ema_21": latest.get("ema_21", 0),
+            "atr": latest.get("atr", 0),
+            "volume_ratio": latest.get("volume_ratio", 1.0),
+            "price_above_vwap": latest.get("price_above_vwap", False)
+        }
+        
+        return to_native(result)
+        
+    except Exception as e:
+        logger.error(f"Error extracting latest indicators: {e}")
+        return {
+            "close": 0, "rsi": 50, "vwap": 0, "sma_20": 0,
+            "ema_9": 0, "ema_21": 0, "atr": 0, "volume_ratio": 1.0,
+            "price_above_vwap": False
+        }
 
 
 # Backward compatibility aliases
@@ -466,22 +492,19 @@ class LiveIndicatorManager:
         self.vwap_stats: Dict[str, Dict] = {} # total_pv, total_volume for cumulative VWAP
     
     def update(self, symbol: str, price_data: Dict, historical_candles: Optional[pd.DataFrame] = None) -> Dict:
-        """
-        Update indicators with a new price tick.
-        
-        Args:
-            symbol: Stock symbol
-            price_data: Latest tick data (ltp, volume, open, high, low)
-            historical_candles: Optional past 1-minute candles for initialization
-            
-        Returns:
-            Dict of latest indicator values
-        """
+        """Update indicators with a new price tick."""
         from src.utils.timezone import now_ist
+        
+        if not price_data or not isinstance(price_data, dict):
+            return self._get_empty_indicators(0)
+            
         now = now_ist()
         ltp = float(price_data.get('ltp', 0))
         volume = float(price_data.get('volume', 0))
         
+        if ltp <= 0:
+            return self._get_empty_indicators(ltp)
+            
         # 1. Initialize if needed
         if symbol not in self.histories:
             if historical_candles is not None:
@@ -491,89 +514,36 @@ class LiveIndicatorManager:
             
             self.vwap_stats[symbol] = {'total_pv': 0.0, 'total_volume': 0.0}
             self.current_candles[symbol] = self._reset_candle(ltp, now)
-            self.current_candles[symbol]['last_total_volume'] = volume # Baseline immediately
-    
-    def is_candle_closed(self, symbol: str) -> bool:
-        """
-        Check if current 1-minute candle has closed.
-        
-        Returns True in the last 2 seconds of each minute to signal
-        that the candle is complete and ready for analysis.
-        
-        Edge cases handled:
-        - Second rollover (59→0)
-        - Symbol not initialized
-        """
-        if symbol not in self.current_candles:
-            return False
-        
-        from src.utils.timezone import now_ist
-        now = now_ist()
-        
-        # Close candle in last 2 seconds of minute
-        candle_close_buffer = 2
-        return now.second >= (60 - candle_close_buffer)
-    
-    def get_closed_candle_data(self, symbol: str) -> Optional[Dict]:
-        """
-        Get complete candle data only when candle has closed.
-        
-        This is critical for professional trading - we wait for candle
-        confirmation before generating signals, not trade on tick noise.
-        
-        Returns:
-            Dict with OHLCV data if candle is closed, None otherwise
-        """
-        if not self.is_candle_closed(symbol):
-            return None
-        
-        current = self.current_candles.get(symbol)
-        if not current:
-            return None
-        
-        return {
-            'open': current['open'],
-            'high': current['high'],
-            'low': current['low'],
-            'close': current['close'],
-            'volume': current['volume'],
-            'timestamp': current['timestamp'],
-            'is_closed': True
-        }
-
-        # 2. Cumulative VWAP Update (Standard Intraday Formula)
-        # Cumulative VWAP = Cumulative(Typical Price * Volume) / Cumulative(Volume)
-        # For ticks, we use ltp * tick_volume. If tick_volume isn't available, we use cumulative volume changes.
+            self.current_candles[symbol]['last_total_volume'] = volume
+            
+        # 2. Cumulative VWAP Update
         stats = self.vwap_stats[symbol]
         last_vol = self.current_candles[symbol]['last_total_volume']
         tick_vol = max(0, volume - last_vol) if last_vol > 0 else 0
         
-        # Update cumulative totals
         stats['total_pv'] += ltp * tick_vol
         stats['total_volume'] += tick_vol
         cumulative_vwap = stats['total_pv'] / stats['total_volume'] if stats['total_volume'] > 0 else ltp
 
-        # 3. Candle Aggregation (1-minute)
+        # 3. Candle Aggregation
         current = self.current_candles[symbol]
         candle_minute = now.replace(second=0, microsecond=0)
         
         if candle_minute > current['timestamp']:
-            # Time to close the current candle and start a new one
             new_row = pd.DataFrame([{
-                'open': current['open'],
-                'high': current['high'],
-                'low': current['low'],
-                'close': current['close'],
+                'open': current['open'], 'high': current['high'],
+                'low': current['low'], 'close': current['close'],
                 'volume': current['volume']
             }], index=[current['timestamp']])
             
-            self.histories[symbol] = pd.concat([self.histories[symbol], new_row]).tail(100)
-            
-            # Reset for new minute
+            if self.histories[symbol] is not None:
+                self.histories[symbol] = pd.concat([self.histories[symbol], new_row]).tail(100)
+            else:
+                self.histories[symbol] = new_row
+                
             self.current_candles[symbol] = self._reset_candle(ltp, candle_minute)
             self.current_candles[symbol]['volume'] = tick_vol
         else:
-            # Update existing partial candle
             current['high'] = max(current['high'], ltp)
             current['low'] = min(current['low'], ltp)
             current['close'] = ltp
@@ -582,36 +552,57 @@ class LiveIndicatorManager:
         current['last_total_volume'] = volume
 
         # 4. Indicators Calculation
-        # We combine completed history with the current live partial candle for the absolute latest indicators
-        history = self.histories[symbol]
-        if len(history) < 2: # Not enough data yet
-            return {
-                "close": ltp,
-                "rsi": 50,
-                "vwap": cumulative_vwap,
-                "atr": 0,
-                "volume_ratio": 1.0
-            }
+        try:
+            history = self.histories[symbol]
+            live_df = pd.concat([history, pd.DataFrame([{
+                'open': current['open'], 'high': current['high'],
+                'low': current['low'], 'close': current['close'],
+                'volume': current['volume']
+            }], index=[current['timestamp']])])
             
-        # Create a temp DF including the current partial candle for RSI/SMA calculation
-        live_df = pd.concat([history, pd.DataFrame([{
-            'open': current['open'],
-            'high': current['high'],
-            'low': current['low'],
-            'close': current['close'],
-            'volume': current['volume']
-        }], index=[current['timestamp']])])
-        
-        calculated = TechnicalIndicators.calculate_all_indicators(live_df)
-        latest = get_latest_indicators(calculated)
-        
-        # Override rolling VWAP with our Cumulative Daily VWAP
-        latest['vwap'] = cumulative_vwap
-        
-        # Add candle data for professional signal confirmation
-        latest['candle_data'] = self.get_closed_candle_data(symbol)
-        
-        return latest
+            calculated = TechnicalIndicators.calculate_all_indicators(live_df)
+            latest = get_latest_indicators(calculated)
+            
+            latest['vwap'] = cumulative_vwap
+            latest['candle_data'] = to_native(self.get_closed_candle_data(symbol))
+            return latest
+            
+        except Exception as e:
+            logger.error(f"{symbol}: Indicators calculation error: {e}")
+            return self._get_empty_indicators(ltp, cumulative_vwap)
+
+    def _get_empty_indicators(self, ltp: float, vwap: float = 0) -> Dict:
+        """Utility to return a default indicators dict"""
+        return {
+            "close": ltp,
+            "rsi": 50,
+            "vwap": vwap or ltp,
+            "atr": 0,
+            "volume_ratio": 1.0,
+            "candle_data": None
+        }
+
+    def is_candle_closed(self, symbol: str) -> bool:
+        """
+        Check if current 1-minute candle has closed.
+        """
+        if symbol not in self.current_candles:
+            return False
+        from src.utils.timezone import now_ist
+        return now_ist().second >= 58
+
+    def get_closed_candle_data(self, symbol: str) -> Optional[Dict]:
+        """Get complete candle data only when candle has closed."""
+        if not self.is_candle_closed(symbol):
+            return None
+        current = self.current_candles.get(symbol)
+        if not current: return None
+        return {
+            'open': current['open'], 'high': current['high'],
+            'low': current['low'], 'close': current['close'],
+            'volume': current['volume'], 'timestamp': current['timestamp'],
+            'is_closed': True
+        }
 
     def _reset_candle(self, price: float, timestamp: datetime) -> Dict:
         """Initialize or reset a candle record"""

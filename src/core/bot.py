@@ -370,9 +370,10 @@ class TradingBot:
     # ==================== Trading Loop ====================
     
     def _on_price_update(self, symbol: str, price_data: Dict) -> None:
-        """Handle real-time price updates from WebSocket"""
+        """Callback for real-time price updates"""
+        indicators = None
         try:
-            current_price = price_data.get('ltp', 0)
+            current_price = float(price_data.get('ltp', 0))
             
             # Update position tracker
             self.position_tracker.update_price(symbol, current_price)
@@ -394,8 +395,16 @@ class TradingBot:
                     # Get real-time dynamic indicators
                     indicators = self.live_indicators.update(symbol, price_data)
                     
+                    # [CRITICAL] Safety check for indicators
+                    if not isinstance(indicators, dict):
+                        logger.error(f"❌ {symbol}: indicators is {type(indicators)} instead of dict. Content: {indicators}")
+                        return
+                        
                     # Update stock_info with latest indicators for dashboard/logging
-                    stock_info.update(indicators)
+                    try:
+                        stock_info.update(indicators)
+                    except Exception as e:
+                        logger.debug(f"⚠️ {symbol}: Info update skipped: {e}")
                     
                     signal = self.strategy.check_entry_signal(stock_info, current_price, indicators)
                     can_trade, reason = self.risk_manager.can_trade()
@@ -428,12 +437,15 @@ class TradingBot:
                 indicators = self.live_indicators.update(symbol, price_data)
                 
                 if not isinstance(indicators, dict):
+                    logger.error(f"❌ {symbol}: exit indicators is {type(indicators)}. Content: {indicators}")
                     return
                 
-                # Update stock_info with latest indicators
+                # Update stock_info if it exists for this symbol (optional but good for dashboard)
+                # This ensures dashboard shows latest indicators for held positions too
                 stock_info = next((s for s in self.selected_stocks if s['symbol'] == symbol), None)
                 if stock_info:
-                    try: stock_info.update(indicators)
+                    try:
+                        stock_info.update(indicators)
                     except: pass
                 
                 signal = self.strategy.check_exit_signal(position, current_price, indicators)
@@ -441,7 +453,17 @@ class TradingBot:
                     self._execute_exit(position, signal, current_price)
                     
         except Exception as e: 
-            logger.error(f"Price update error for {symbol}: {e}")
+            import traceback
+            err_msg = str(e)
+            if "NoneType" in err_msg and "iterable" in err_msg:
+                # Extra debug for the infamous NoneType error
+                try:
+                    logger.error(f"DETECTED NONETYPE ITERATION ERROR for {symbol}")
+                    logger.error(f"Indicators: {indicators if 'indicators' in locals() else 'NOT DEFINED'}")
+                    logger.error(f"Price Data: {price_data}")
+                except: pass
+            
+            logger.error(f"Price update error for {symbol}: {e}\n{traceback.format_exc()}")
     
     def _execute_entry(self, stock: Dict, signal: Dict) -> bool:
         """Execute an entry order"""

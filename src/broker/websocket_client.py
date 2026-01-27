@@ -107,7 +107,16 @@ class AngelWebSocket:
                 if self.on_price_update:
                     # Find symbol for this token
                     symbol = self._get_symbol_for_token(token)
-                    self.on_price_update(symbol, price_data)
+                    
+                    # Validate symbol and price_data before callback
+                    if symbol and symbol != token and price_data.get('ltp', 0) > 0:
+                        self.on_price_update(symbol, price_data)
+                    else:
+                        # Log warning if we're getting bad data
+                        if not symbol or symbol == token:
+                            logger.debug(f"Skipping price update: No symbol mapping for token {token}")
+                        elif price_data.get('ltp', 0) <= 0:
+                            logger.debug(f"Skipping price update for {symbol}: Invalid LTP")
                     
         except Exception as e:
             logger.error(f"Error processing WebSocket data: {e}")

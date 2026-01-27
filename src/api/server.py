@@ -9,8 +9,8 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
-from flask.json.provider import DefaultJSONProvider
 from src.core.config_manager import get_config
+from flask.json.provider import DefaultJSONProvider
 
 class CustomJSONProvider(DefaultJSONProvider):
     """Custom JSON provider to handle numpy types which are common in trading and analysis"""
@@ -82,6 +82,9 @@ def create_app() -> Flask:
     
     # Enable CORS
     CORS(app)
+    
+    # Use custom JSON provider to handle numpy types
+    app.json = CustomJSONProvider(app)
     
     # Use custom JSON provider to handle numpy types
     app.json = CustomJSONProvider(app)
