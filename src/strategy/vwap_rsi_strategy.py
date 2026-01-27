@@ -48,6 +48,17 @@ class VWAPRSIStrategy(BaseStrategy):
         self.use_pivot_confluence = self.config.get('strategy.use_pivot_confluence', True)
         self.require_pivot_confluence = self.config.get('strategy.require_pivot_confluence', False)
     
+    def reset_daily(self) -> None:
+        """
+        Reset daily state and price tracking.
+        Call this at the start of each trading day to prevent stale data.
+        """
+        self.previous_prices.clear()
+        self.previous_vwap.clear()
+        self.price_history.clear()
+        from loguru import logger
+        logger.info("🔄 Strategy daily state reset")
+    
     def is_hugging_vwap(self, symbol: str, current_price: float, vwap: float) -> bool:
         """
         Detect if price is consolidating ("hugging") around VWAP.

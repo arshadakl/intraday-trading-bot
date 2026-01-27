@@ -171,7 +171,7 @@ class PaperTrader:
     def set_balance(self, balance: float) -> None:
         """Set the paper trading balance"""
         self.initial_balance = balance
-        self. available_balance = balance
+        self.available_balance = balance
         logger.info(f"Paper balance set to ₹{balance:,.2f}")
     
     def get_available_balance(self) -> float:
@@ -304,7 +304,7 @@ class PaperTrader:
         
         position = self.positions[symbol]
         position.current_price = price
-        position.pnl = (price - position. entry_price) * position.quantity
+        position.pnl = (price - position.entry_price) * position.quantity
         
         # Check stop loss
         if price <= position.stop_loss:
@@ -320,18 +320,18 @@ class PaperTrader:
         """Get all open positions as list of dicts"""
         return [
             {
-                "symbol":  pos.symbol,
+                "symbol": pos.symbol,
                 "token": pos.token,
                 "entry_price": pos.entry_price,
                 "quantity": pos.quantity,
                 "current_price": pos.current_price,
-                "pnl":  pos.pnl,
+                "pnl": pos.pnl,
                 "stop_loss": pos.stop_loss,
-                "target": pos. target,
-                "entry_time": pos.entry_time. isoformat(),
+                "target": pos.target,
+                "entry_time": pos.entry_time.isoformat(),
                 "status": pos.status
             }
-            for pos in self.positions. values()
+            for pos in self.positions.values()
         ]
     
     def get_trades_today(self) -> List[Dict]:
@@ -341,16 +341,16 @@ class PaperTrader:
             {
                 "symbol": trade.symbol,
                 "entry_price": trade.entry_price,
-                "exit_price":  trade.exit_price,
+                "exit_price": trade.exit_price,
                 "quantity": trade.quantity,
                 "pnl": trade.pnl,
                 "pnl_percent": trade.pnl_percent,
                 "exit_reason": trade.exit_reason,
-                "entry_time": trade. entry_time.isoformat(),
+                "entry_time": trade.entry_time.isoformat(),
                 "exit_time": trade.exit_time.isoformat()
             }
             for trade in self.trades
-            if trade.exit_time. date() == today
+            if trade.exit_time.date() == today
         ]
     
     def get_daily_summary(self) -> Dict:
@@ -375,11 +375,11 @@ class PaperTrader:
         report = {
             "date": today,
             "summary": self.get_daily_summary(),
-            "trades": self. get_trades_today(),
+            "trades": self.get_trades_today(),
             "open_positions": self.get_positions()
         }
         
-        filepath = self.data_dir / f"{today}. json"
+        filepath = self.data_dir / f"{today}.json"
         with open(filepath, 'w') as f:
             json.dump(report, f, indent=2, default=str)
         

@@ -86,9 +86,6 @@ def create_app() -> Flask:
     # Use custom JSON provider to handle numpy types
     app.json = CustomJSONProvider(app)
     
-    # Use custom JSON provider to handle numpy types
-    app.json = CustomJSONProvider(app)
-    
     # ==================== Static Files ====================
     
     @app.route('/')

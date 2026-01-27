@@ -491,6 +491,16 @@ class LiveIndicatorManager:
         self.current_candles: Dict[str, Dict] = {} # Tracking current partial candle
         self.vwap_stats: Dict[str, Dict] = {} # total_pv, total_volume for cumulative VWAP
     
+    def reset_all(self) -> None:
+        """
+        Reset all indicator state. Call at the start of each trading day
+        to ensure fresh cumulative VWAP calculations and candle data.
+        """
+        self.histories.clear()
+        self.current_candles.clear()
+        self.vwap_stats.clear()
+        logger.info("🔄 LiveIndicatorManager state reset")
+    
     def update(self, symbol: str, price_data: Dict, historical_candles: Optional[pd.DataFrame] = None) -> Dict:
         """Update indicators with a new price tick."""
         from src.utils.timezone import now_ist
@@ -530,11 +540,15 @@ class LiveIndicatorManager:
         candle_minute = now.replace(second=0, microsecond=0)
         
         if candle_minute > current['timestamp']:
-            new_row = pd.DataFrame([{
+            # Mark that we just closed a candle (for signal generation)
+            # Store the closed candle data before resetting
+            closed_candle = {
                 'open': current['open'], 'high': current['high'],
                 'low': current['low'], 'close': current['close'],
                 'volume': current['volume']
-            }], index=[current['timestamp']])
+            }
+            
+            new_row = pd.DataFrame([closed_candle], index=[current['timestamp']])
             
             if self.histories[symbol] is not None:
                 self.histories[symbol] = pd.concat([self.histories[symbol], new_row]).tail(100)
@@ -543,12 +557,17 @@ class LiveIndicatorManager:
                 
             self.current_candles[symbol] = self._reset_candle(ltp, candle_minute)
             self.current_candles[symbol]['volume'] = tick_vol
+            self.current_candles[symbol]['just_closed'] = True  # Signal that previous candle closed
+            # Store closed candle data for retrieval
+            self.current_candles[symbol]['closed_candle_data'] = closed_candle
         else:
             current['high'] = max(current['high'], ltp)
             current['low'] = min(current['low'], ltp)
             current['close'] = ltp
             current['volume'] += tick_vol
         
+        # Update reference to current candle after potential reset
+        current = self.current_candles[symbol]
         current['last_total_volume'] = volume
 
         # 4. Indicators Calculation
@@ -584,25 +603,38 @@ class LiveIndicatorManager:
 
     def is_candle_closed(self, symbol: str) -> bool:
         """
-        Check if current 1-minute candle has closed.
+        Check if current 1-minute candle has closed (a new candle has started).
+        This is determined by checking if we have transitioned to a new minute.
         """
         if symbol not in self.current_candles:
             return False
-        from src.utils.timezone import now_ist
-        return now_ist().second >= 58
+        return self.current_candles[symbol].get('just_closed', False)
 
     def get_closed_candle_data(self, symbol: str) -> Optional[Dict]:
-        """Get complete candle data only when candle has closed."""
+        """Get complete candle data only when a candle has just closed."""
         if not self.is_candle_closed(symbol):
             return None
         current = self.current_candles.get(symbol)
-        if not current: return None
-        return {
-            'open': current['open'], 'high': current['high'],
-            'low': current['low'], 'close': current['close'],
-            'volume': current['volume'], 'timestamp': current['timestamp'],
+        if not current:
+            return None
+        
+        # Get the stored closed candle data (from the previous completed candle)
+        closed_data = current.get('closed_candle_data')
+        if not closed_data:
+            return None
+            
+        # Reset the just_closed flag after reading
+        result = {
+            'open': closed_data['open'], 
+            'high': closed_data['high'],
+            'low': closed_data['low'], 
+            'close': closed_data['close'],
+            'volume': closed_data['volume'], 
+            'timestamp': current.get('timestamp'),
             'is_closed': True
         }
+        current['just_closed'] = False
+        return result
 
     def _reset_candle(self, price: float, timestamp: datetime) -> Dict:
         """Initialize or reset a candle record"""
