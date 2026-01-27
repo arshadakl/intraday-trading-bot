@@ -592,7 +592,11 @@ class LiveIndicatorManager:
                 'volume': current['volume']
             }], index=[current['timestamp']])
             
-            self.histories[symbol] = pd.concat([self.histories[symbol], new_row]).tail(100)
+            # Safety check before concat
+            if self.histories[symbol] is not None and isinstance(self.histories[symbol], pd.DataFrame):
+                self.histories[symbol] = pd.concat([self.histories[symbol], new_row]).tail(100)
+            else:
+                self.histories[symbol] = new_row
             
             # Reset for new minute
             self.current_candles[symbol] = self._reset_candle(ltp, candle_minute)
@@ -609,23 +613,37 @@ class LiveIndicatorManager:
         # 4. Indicators Calculation
         # We combine completed history with the current live partial candle for the absolute latest indicators
         history = self.histories[symbol]
-        if len(history) < 2: # Not enough data yet
+        
+        # Safety check: ensure history is a valid DataFrame
+        if history is None or not isinstance(history, pd.DataFrame) or len(history) < 2:
             return {
                 "close": ltp,
                 "rsi": 50,
                 "vwap": cumulative_vwap,
                 "atr": 0,
-                "volume_ratio": 1.0
+                "volume_ratio": 1.0,
+                "candle_data": None
             }
             
         # Create a temp DF including the current partial candle for RSI/SMA calculation
-        live_df = pd.concat([history, pd.DataFrame([{
-            'open': current['open'],
-            'high': current['high'],
-            'low': current['low'],
-            'close': current['close'],
-            'volume': current['volume']
-        }], index=[current['timestamp']])])
+        try:
+            live_df = pd.concat([history, pd.DataFrame([{
+                'open': current['open'],
+                'high': current['high'],
+                'low': current['low'],
+                'close': current['close'],
+                'volume': current['volume']
+            }], index=[current['timestamp']])])
+        except (TypeError, ValueError) as e:
+            logger.warning(f"{symbol}: Error creating live_df: {e}, returning default values")
+            return {
+                "close": ltp,
+                "rsi": 50,
+                "vwap": cumulative_vwap,
+                "atr": 0,
+                "volume_ratio": 1.0,
+                "candle_data": None
+            }
         
         calculated = TechnicalIndicators.calculate_all_indicators(live_df)
         latest = get_latest_indicators(calculated)
