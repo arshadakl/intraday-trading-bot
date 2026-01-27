@@ -427,8 +427,15 @@ class TradingBot:
                 # Get real-time dynamic indicators for exit check
                 indicators = self.live_indicators.update(symbol, price_data)
                 
+                if not isinstance(indicators, dict):
+                    return
+                
                 # Update stock_info with latest indicators
-                stock_info.update(indicators)
+                stock_info = next((s for s in self.selected_stocks if s['symbol'] == symbol), None)
+                if stock_info:
+                    try: stock_info.update(indicators)
+                    except: pass
+                
                 signal = self.strategy.check_exit_signal(position, current_price, indicators)
                 if signal: 
                     self._execute_exit(position, signal, current_price)

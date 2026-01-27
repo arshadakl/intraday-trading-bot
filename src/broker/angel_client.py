@@ -213,40 +213,52 @@ class AngelOneClient:
         if not self.is_authenticated:
             return None
             
-        try:
-            from src.utils.timezone import now_ist
-            to_date = now_ist()
-            from_date = to_date - timedelta(days=days)
-            
-            params = {
-                "exchange": exchange,
-                "symboltoken": token,
-                "interval": interval,
-                "fromdate": from_date.strftime("%Y-%m-%d %H:%M"),
-                "todate": to_date.strftime("%Y-%m-%d %H:%M")
-            }
-            
-            # Use Historical API for candle data
-            data = self.historical_api.getCandleData(params)
-            
-            if data.get("status") and data.get("data"):
-                candles = data["data"]
-                return [
-                    {
-                        "timestamp": candle[0],
-                        "open": float(candle[1]),
-                        "high": float(candle[2]),
-                        "low": float(candle[3]),
-                        "close": float(candle[4]),
-                        "volume": int(candle[5])
-                    }
-                    for candle in candles
-                ]
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error fetching historical data for {symbol}: {e}")
-            return None
+        import time
+        max_retries = 3
+        retry_delay = 1
+        
+        for attempt in range(max_retries):
+            try:
+                from src.utils.timezone import now_ist
+                to_date = now_ist()
+                from_date = to_date - timedelta(days=days)
+                
+                params = {
+                    "exchange": exchange, "symboltoken": token, "interval": interval,
+                    "fromdate": from_date.strftime("%Y-%m-%d %H:%M"),
+                    "todate": to_date.strftime("%Y-%m-%d %H:%M")
+                }
+                
+                data = self.historical_api.getCandleData(params)
+                
+                if data.get("status"):
+                    if data.get("data"):
+                        return [
+                            {"timestamp": c[0], "open": float(c[1]), "high": float(c[2]),
+                             "low": float(c[3]), "close": float(c[4]), "volume": int(c[5])}
+                            for c in data["data"]
+                        ]
+                    return None
+                
+                # Handle rate limit
+                msg = data.get("message", "").lower()
+                if "access denied" in msg or "exceeding access rate" in msg or data.get("errorcode") == "AB1004":
+                    if attempt < max_retries - 1:
+                        logger.warning(f"⏳ Rate limit hit for {symbol}, retrying in {retry_delay}s...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                
+                logger.error(f"Error fetching historical data for {symbol}: {data.get('message')}")
+                return None
+                
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    continue
+                logger.error(f"Error fetching historical data for {symbol}: {e}")
+                return None
+        return None
     
     def get_previous_day_ohlc(self, symbol: str, token: str,
                               exchange: str = "NSE") -> Optional[Dict]:
