@@ -465,7 +465,7 @@ class LiveIndicatorManager:
         self.current_candles: Dict[str, Dict] = {} # Tracking current partial candle
         self.vwap_stats: Dict[str, Dict] = {} # total_pv, total_volume for cumulative VWAP
     
-    def update(self, symbol: str, price_data: Dict, historical_candles: Optional[pd.DataFrame] = None) -> Dict:
+    def update(self, symbol: str,price_data: Dict, historical_candles: Optional[pd.DataFrame] = None) -> Dict:
         """
         Update indicators with a new price tick.
         
@@ -478,9 +478,34 @@ class LiveIndicatorManager:
             Dict of latest indicator values
         """
         from src.utils.timezone import now_ist
+        
+        # Validate price_data
+        if price_data is None:
+            logger.debug(f"{symbol}: Received None price_data, skipping update")
+            return {
+                "close": 0,
+                "rsi": 50,
+                "vwap": 0,
+                "atr": 0,
+                "volume_ratio": 1.0,
+                "candle_data": None
+            }
+        
         now = now_ist()
         ltp = float(price_data.get('ltp', 0))
         volume = float(price_data.get('volume', 0))
+        
+        # Additional validation
+        if ltp <= 0:
+            logger.debug(f"{symbol}: Invalid LTP ({ltp}), skipping update")
+            return {
+                "close": 0,
+                "rsi": 50,
+                "vwap": 0,
+                "atr": 0,
+                "volume_ratio": 1.0,
+                "candle_data": None
+            }
         
         # 1. Initialize if needed
         if symbol not in self.histories:
