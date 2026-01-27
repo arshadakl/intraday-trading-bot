@@ -465,7 +465,7 @@ class LiveIndicatorManager:
         self.current_candles: Dict[str, Dict] = {} # Tracking current partial candle
         self.vwap_stats: Dict[str, Dict] = {} # total_pv, total_volume for cumulative VWAP
     
-    def update(self, symbol: str,price_data: Dict, historical_candles: Optional[pd.DataFrame] = None) -> Dict:
+    def update(self, symbol: str, price_data: Dict, historical_candles: Optional[pd.DataFrame] = None) -> Dict:
         """
         Update indicators with a new price tick.
         
@@ -478,34 +478,9 @@ class LiveIndicatorManager:
             Dict of latest indicator values
         """
         from src.utils.timezone import now_ist
-        
-        # Validate price_data
-        if price_data is None:
-            logger.debug(f"{symbol}: Received None price_data, skipping update")
-            return {
-                "close": 0,
-                "rsi": 50,
-                "vwap": 0,
-                "atr": 0,
-                "volume_ratio": 1.0,
-                "candle_data": None
-            }
-        
         now = now_ist()
         ltp = float(price_data.get('ltp', 0))
         volume = float(price_data.get('volume', 0))
-        
-        # Additional validation
-        if ltp <= 0:
-            logger.debug(f"{symbol}: Invalid LTP ({ltp}), skipping update")
-            return {
-                "close": 0,
-                "rsi": 50,
-                "vwap": 0,
-                "atr": 0,
-                "volume_ratio": 1.0,
-                "candle_data": None
-            }
         
         # 1. Initialize if needed
         if symbol not in self.histories:
@@ -592,11 +567,7 @@ class LiveIndicatorManager:
                 'volume': current['volume']
             }], index=[current['timestamp']])
             
-            # Safety check before concat
-            if self.histories[symbol] is not None and isinstance(self.histories[symbol], pd.DataFrame):
-                self.histories[symbol] = pd.concat([self.histories[symbol], new_row]).tail(100)
-            else:
-                self.histories[symbol] = new_row
+            self.histories[symbol] = pd.concat([self.histories[symbol], new_row]).tail(100)
             
             # Reset for new minute
             self.current_candles[symbol] = self._reset_candle(ltp, candle_minute)
@@ -613,37 +584,23 @@ class LiveIndicatorManager:
         # 4. Indicators Calculation
         # We combine completed history with the current live partial candle for the absolute latest indicators
         history = self.histories[symbol]
-        
-        # Safety check: ensure history is a valid DataFrame
-        if history is None or not isinstance(history, pd.DataFrame) or len(history) < 2:
+        if len(history) < 2: # Not enough data yet
             return {
                 "close": ltp,
                 "rsi": 50,
                 "vwap": cumulative_vwap,
                 "atr": 0,
-                "volume_ratio": 1.0,
-                "candle_data": None
+                "volume_ratio": 1.0
             }
             
         # Create a temp DF including the current partial candle for RSI/SMA calculation
-        try:
-            live_df = pd.concat([history, pd.DataFrame([{
-                'open': current['open'],
-                'high': current['high'],
-                'low': current['low'],
-                'close': current['close'],
-                'volume': current['volume']
-            }], index=[current['timestamp']])])
-        except (TypeError, ValueError) as e:
-            logger.warning(f"{symbol}: Error creating live_df: {e}, returning default values")
-            return {
-                "close": ltp,
-                "rsi": 50,
-                "vwap": cumulative_vwap,
-                "atr": 0,
-                "volume_ratio": 1.0,
-                "candle_data": None
-            }
+        live_df = pd.concat([history, pd.DataFrame([{
+            'open': current['open'],
+            'high': current['high'],
+            'low': current['low'],
+            'close': current['close'],
+            'volume': current['volume']
+        }], index=[current['timestamp']])])
         
         calculated = TechnicalIndicators.calculate_all_indicators(live_df)
         latest = get_latest_indicators(calculated)

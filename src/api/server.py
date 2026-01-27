@@ -7,7 +7,28 @@ from flask_cors import CORS
 from loguru import logger
 from typing import Optional
 
+import numpy as np
+import pandas as pd
+from flask.json.provider import DefaultJSONProvider
 from src.core.config_manager import get_config
+
+class CustomJSONProvider(DefaultJSONProvider):
+    """Custom JSON provider to handle numpy types which are common in trading and analysis"""
+    def default(self, obj):
+        try:
+            if isinstance(obj, (np.float64, np.float32)):
+                return float(obj)
+            if isinstance(obj, (np.int64, np.int32)):
+                return int(obj)
+            if isinstance(obj, np.bool_):
+                return bool(obj)
+            if isinstance(obj, datetime):
+                return obj.isoformat()
+            if pd.isna(obj):
+                return None
+        except:
+            pass
+        return super().default(obj)
 
 # Try to import auth module (requires PyJWT)
 # If not available, run without authentication
@@ -61,6 +82,9 @@ def create_app() -> Flask:
     
     # Enable CORS
     CORS(app)
+    
+    # Use custom JSON provider to handle numpy types
+    app.json = CustomJSONProvider(app)
     
     # ==================== Static Files ====================
     

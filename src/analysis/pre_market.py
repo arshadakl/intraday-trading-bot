@@ -158,7 +158,7 @@ class PreMarketAnalyzer:
         max_price = self.config.get('stock_selection.max_price', 5000)
         
         # Rate limiting settings
-        request_delay = 0.4  # 400ms delay between requests
+        request_delay = 0.6  # 600ms delay to stay under 3 req/sec limit
         retry_delay = 2.0    # 2 second delay on rate limit error
         max_retries = 2      # Max retries for rate-limited requests
         
