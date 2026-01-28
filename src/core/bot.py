@@ -307,6 +307,17 @@ class TradingBot:
             self.market_analysis["analyzed_at"] = now_ist().isoformat()
             self.market_analysis["total_stocks_analyzed"] = len(analyzed_stocks)
             
+            # [FIX] Check if analysis returned no stocks (API failure scenario)
+            if not analyzed_stocks or len(analyzed_stocks) == 0:
+                error_msg = "Market analysis failed - No stocks could be analyzed. API rate limit or connection issue."
+                logger.error(f"❌ {error_msg}")
+                self._log_activity("ERROR", error_msg)
+                self.market_analysis["trading_suitable"] = False
+                self.market_analysis["reason"] = error_msg
+                self.market_analysis["stocks"] = []
+                self.selected_stocks = []
+                return []
+            
             # Score and rank stocks using the StockScorer
             logger.info("📊 Scoring and ranking stocks...")
             scored_stocks = self.stock_scorer.rank_stocks(analyzed_stocks)
@@ -405,10 +416,19 @@ class TradingBot:
             return self.selected_stocks
             
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
             logger.error(f"❌ Market analysis error: {e}")
+            logger.debug(f"Full traceback:\n{error_details}")
             self._log_activity("ERROR", f"Market analysis failed: {str(e)}")
+            
+            # [FIX] Ensure dashboard shows proper error state
+            self.market_analysis["analyzed_at"] = now_ist().isoformat()
+            self.market_analysis["total_stocks_analyzed"] = 0
             self.market_analysis["trading_suitable"] = False
             self.market_analysis["reason"] = f"Analysis failed: {str(e)}"
+            self.market_analysis["stocks"] = []
+            self.selected_stocks = []
             return []
     
     # ==================== Trading Loop ====================
@@ -1091,11 +1111,31 @@ class TradingBot:
     
     def get_status(self) -> Dict:
         """Get comprehensive bot status"""
+        from datetime import datetime
+        import platform
+        
         # Get dynamic current mode for frontend
         current_mode = self.get_current_mode()
         
         # Determine if WebSocket is connected
         ws_connected = self.websocket is not None and hasattr(self.websocket, 'is_connected') and self.websocket.is_connected
+        
+        # Get current times for display
+        ist_now = now_ist()
+        server_now = datetime.now()  # Server's actual local time (no timezone conversion)
+        
+        # Try to detect server timezone
+        try:
+            import time
+            if time.daylight:
+                tz_offset = -time.altzone / 3600
+                tz_name = time.tzname[1]
+            else:
+                tz_offset = -time.timezone / 3600
+                tz_name = time.tzname[0]
+        except:
+            tz_offset = 0
+            tz_name = "Unknown"
         
         return {
             "status": self.status,
@@ -1110,6 +1150,14 @@ class TradingBot:
             "positions": self.position_tracker.get_all_positions() if self.position_tracker else [],
             "daily_stats": self.daily_stats,
             "account": self.get_account_info(),
+            "server_time": {
+                "ist": ist_now.strftime("%H:%M:%S"),
+                "ist_date": ist_now.strftime("%Y-%m-%d"),
+                "server": server_now.strftime("%H:%M:%S"),  # Actual server time
+                "server_date": server_now.strftime("%Y-%m-%d"),
+                "timezone": tz_name,
+                "offset": f"UTC{tz_offset:+.1f}" if tz_offset != 0 else "UTC"
+            },
             "config": {
                 "max_stocks": self.config.max_stocks,
                 "stop_loss": self.config.stop_loss_percent,
