@@ -115,6 +115,50 @@ class TradingBot:
         with self._log_lock:
             return self.activity_log[-limit:][::-1]  # Return newest first
     
+    def get_current_mode(self) -> str:
+        """
+        Dynamically determine the current operating mode based on real-time state.
+        This is different from startup_mode which is set once at startup.
+        
+        Returns:
+            str: TRADING, READY_TO_TRADE, WAITING_FOR_ANALYSIS, MONITORING_ONLY, MARKET_CLOSING, ANALYSIS_COMPLETE, or NON_MARKET
+        """
+        now = now_ist_time()
+        timing = self.config.get("timing", {})
+        
+        market_open = datetime.strptime(timing.get("trading_start", "09:15"), "%H:%M").time()
+        no_new_trades = datetime.strptime(timing.get("no_new_trade_after", "15:00"), "%H:%M").time()
+        market_close = datetime.strptime(timing.get("market_close", "15:30"), "%H:%M").time()
+        
+        # Check if WebSocket is connected and actively monitoring
+        is_monitoring = self.websocket is not None and hasattr(self.websocket, 'is_connected') and self.websocket.is_connected
+        
+        # Check if we have positions
+        has_positions = self.position_tracker and len(self.position_tracker.get_all_positions()) > 0
+        
+        # Within trading hours
+        if market_open <= now <= no_new_trades:
+            if is_monitoring or has_positions:
+                return "TRADING"
+            elif self.selected_stocks:
+                return "READY_TO_TRADE"
+            else:
+                return "WAITING_FOR_ANALYSIS"
+        
+        # Within monitoring-only hours (after no_new_trades but before close)
+        elif no_new_trades < now <= market_close:
+            if has_positions:
+                return "MONITORING_ONLY"  # Just watching existing positions
+            else:
+                return "MARKET_CLOSING"
+        
+        # Outside market hours
+        else:
+            if self.selected_stocks:
+                return "ANALYSIS_COMPLETE"
+            else:
+                return "NON_MARKET"
+    
     # ==================== Initialization ====================
     
     def initialize(self) -> bool:
@@ -706,6 +750,21 @@ class TradingBot:
                 "mode": "PRE_MARKET",
                 "description": "Bot started before market. Will follow normal schedule."
             })
+        
+        elif now >= analysis_time and now < market_open:
+            # Started between 8:30 AM and 9:15 AM - Run analysis now, wait for market
+            self.startup_mode = "PRE_MARKET"
+            logger.info("=" * 60)
+            logger.info("🌅 STARTUP MODE: PRE-MARKET (Analysis Window)")
+            logger.info("=" * 60)
+            logger.info(f"⏰ Current Time: {now.strftime('%H:%M:%S')}")
+            logger.info("📋 Running pre-market analysis now")
+            logger.info(f"📊 Trading will start at: {timing.get('trading_start', '09:15')}")
+            logger.info("✅ Scheduler will start trading at market open")
+            self._log_activity("STARTUP", "Pre-market analysis mode - Trade at open", {
+                "mode": "PRE_MARKET",
+                "description": "Bot started during analysis window. Will analyze now, trade at market open."
+            })
             
         elif now >= market_open and now <= no_new_trades:
             # Started during market hours (9:15 AM - 3:00 PM)
@@ -752,10 +811,38 @@ class TradingBot:
     def _execute_startup_actions(self) -> None:
         """Execute appropriate actions based on startup mode"""
         if self.startup_mode == "PRE_MARKET":
-            # Normal mode - scheduler will handle everything
-            logger.success("🚀 Trading bot started in PRE-MARKET mode!")
-            logger.info("📅 Waiting for scheduled tasks...")
-            self._log_activity("SYSTEM", "Bot ready - Waiting for scheduled analysis at 08:30")
+            # Check if we're in the analysis window (8:30-9:15)
+            now = now_ist_time()
+            timing = self.config.get("timing", {})
+            analysis_time = datetime.strptime(timing.get("analysis_start", "08:30"), "%H:%M").time()
+            market_open = datetime.strptime(timing.get("trading_start", "09:15"), "%H:%M").time()
+            
+            if now >= analysis_time and now < market_open:
+                # In analysis window - run analysis now, scheduler will start trading at 9:15
+                logger.success("🚀 Trading bot started in PRE-MARKET mode (Analysis Window)!")
+                logger.info("🔍 Running pre-market analysis immediately...")
+                self._log_activity("SYSTEM", "Running pre-market analysis - trading will start at market open")
+                
+                # Run analysis immediately
+                self.run_pre_market_analysis()
+                
+                if self.selected_stocks:
+                    logger.info("=" * 60)
+                    logger.info("📊 ANALYSIS COMPLETE - WAITING FOR MARKET OPEN")
+                    logger.info("=" * 60)
+                    logger.info(f"✅ Found {len(self.selected_stocks)} stocks - Trading will start at {timing.get('trading_start', '09:15')}")
+                    self._log_activity("ANALYSIS", f"Analysis complete. {len(self.selected_stocks)} stocks selected. Waiting for market open.")
+                    self.market_analysis["trading_suitable"] = True
+                    self.market_analysis["reason"] = f"Analysis complete. Trading will start at {timing.get('trading_start', '09:15')}"
+                else:
+                    logger.warning("⚠️ No suitable stocks found for trading")
+                    self.market_analysis["trading_suitable"] = False
+                    self.market_analysis["reason"] = "No stocks met selection criteria"
+            else:
+                # Before analysis time - just wait
+                logger.success("🚀 Trading bot started in PRE-MARKET mode!")
+                logger.info("📅 Waiting for scheduled tasks...")
+                self._log_activity("SYSTEM", f"Bot ready - Waiting for scheduled analysis at {timing.get('analysis_start', '08:30')}")
             
         elif self.startup_mode == "MARKET_HOURS":
             logger.success("🚀 Trading bot started in MARKET HOURS mode!")
@@ -893,6 +980,14 @@ class TradingBot:
             logger.warning("⚠️ No stocks selected for monitoring")
             return
         
+        # Update startup_mode to MARKET_HOURS since we're now actively trading
+        if self.startup_mode != "MARKET_HOURS":
+            logger.info("📈 Transitioning to MARKET_HOURS mode - Active trading begins")
+            self.startup_mode = "MARKET_HOURS"
+            self.market_analysis["trading_suitable"] = True
+            self.market_analysis["reason"] = "Market open - Active trading in progress"
+            self._log_activity("SYSTEM", "Transitioned to MARKET_HOURS mode")
+        
         # Prepare tokens in correct format for WebSocket
         # WebSocket expects: [{'exchange_type': 1, 'token': '2885', 'symbol': 'RELIANCE-EQ'}]
         tokens = [
@@ -917,7 +1012,7 @@ class TradingBot:
         self.websocket.connect()
         
         logger.info(f"📡 WebSocket monitoring started for {len(tokens)} stocks")
-        self._log_activity("SYSTEM", f"Monitoring {len(tokens)} stocks via WebSocket")
+        self._log_activity("TRADING", f"Active trading started - Monitoring {len(tokens)} stocks via WebSocket")
     
     def pause(self) -> bool:
         """Pause trading (keep monitoring but don't trade)"""
@@ -996,9 +1091,17 @@ class TradingBot:
     
     def get_status(self) -> Dict:
         """Get comprehensive bot status"""
+        # Get dynamic current mode for frontend
+        current_mode = self.get_current_mode()
+        
+        # Determine if WebSocket is connected
+        ws_connected = self.websocket is not None and hasattr(self.websocket, 'is_connected') and self.websocket.is_connected
+        
         return {
             "status": self.status,
             "startup_mode": self.startup_mode,
+            "current_mode": current_mode,  # Dynamic real-time mode
+            "is_actively_trading": ws_connected and self.scheduler.is_trading_hours(),
             "mode": self.config.trading_mode,
             "is_paper_mode": self.config.is_paper_mode,
             "start_time": self.start_time.isoformat() if self.start_time else None,
