@@ -179,13 +179,28 @@ function updateModeBadge(mode) {
     }
 }
 
-function updateStartupMode(startupMode) {
+function updateStartupMode(startupMode, currentMode) {
     const badge = document.getElementById('startup-mode-badge');
     if (!badge) return;
     
     badge.className = 'badge';
     
-    switch (startupMode) {
+    // Prefer currentMode for real-time accuracy
+    const mode = currentMode || startupMode;
+    
+    switch (mode) {
+        case 'TRADING':
+            badge.className += ' startup-mode-market';
+            badge.textContent = '📈 TRADING';
+            break;
+        case 'READY_TO_TRADE':
+            badge.className += ' startup-mode-market';
+            badge.textContent = '🟢 READY';
+            break;
+        case 'WAITING_FOR_ANALYSIS':
+            badge.className += ' startup-mode-pre';
+            badge.textContent = '⏳ WAITING';
+            break;
         case 'PRE_MARKET':
             badge.className += ' startup-mode-pre';
             badge.textContent = '🌅 PRE-MARKET';
@@ -193,6 +208,18 @@ function updateStartupMode(startupMode) {
         case 'MARKET_HOURS':
             badge.className += ' startup-mode-market';
             badge.textContent = '📈 MARKET HOURS';
+            break;
+        case 'MONITORING_ONLY':
+            badge.className += ' startup-mode-market';
+            badge.textContent = '👁️ MONITORING';
+            break;
+        case 'MARKET_CLOSING':
+            badge.className += ' startup-mode-non';
+            badge.textContent = '🔸 CLOSING';
+            break;
+        case 'ANALYSIS_COMPLETE':
+            badge.className += ' startup-mode-non';
+            badge.textContent = '📋 ANALYSIS DONE';
             break;
         case 'NON_MARKET':
             badge.className += ' startup-mode-non';
@@ -206,15 +233,43 @@ function updateStartupMode(startupMode) {
 
 function updateMarketAnalysis(data) {
     const startupMode = data.startup_mode;
+    const currentMode = data.current_mode;  // Dynamic real-time mode from backend
+    const isActivelyTrading = data.is_actively_trading;
     const analysis = data.market_analysis || {};
     
-    // Update startup mode in analysis section
+    // Update startup mode in analysis section - now uses current_mode for accuracy
     const modeEl = document.getElementById('analysis-startup-mode');
     if (modeEl) {
         let modeText = 'Waiting...';
-        if (startupMode === 'PRE_MARKET') modeText = '🌅 Pre-Market (Normal Schedule)';
-        else if (startupMode === 'MARKET_HOURS') modeText = '📈 Market Hours (Active Trading)';
-        else if (startupMode === 'NON_MARKET') modeText = '🌙 Non-Market (Analysis Only)';
+        // Prefer current_mode for real-time accuracy
+        switch (currentMode) {
+            case 'TRADING':
+                modeText = '📈 Trading Active';
+                break;
+            case 'READY_TO_TRADE':
+                modeText = '🟢 Ready to Trade (Market Hours)';
+                break;
+            case 'WAITING_FOR_ANALYSIS':
+                modeText = '⏳ Waiting for Analysis';
+                break;
+            case 'MONITORING_ONLY':
+                modeText = '👁️ Monitoring Only (No New Trades)';
+                break;
+            case 'MARKET_CLOSING':
+                modeText = '🔸 Market Closing Soon';
+                break;
+            case 'ANALYSIS_COMPLETE':
+                modeText = '📋 Analysis Complete (Non-Market)';
+                break;
+            case 'NON_MARKET':
+                modeText = '🌙 Non-Market (Analysis Only)';
+                break;
+            default:
+                // Fallback to startup_mode
+                if (startupMode === 'PRE_MARKET') modeText = '🌅 Pre-Market (Normal Schedule)';
+                else if (startupMode === 'MARKET_HOURS') modeText = '📈 Market Hours (Active Trading)';
+                else if (startupMode === 'NON_MARKET') modeText = '🌙 Non-Market (Analysis Only)';
+        }
         modeEl.textContent = modeText;
     }
     
@@ -231,17 +286,26 @@ function updateMarketAnalysis(data) {
         stocksEl.textContent = analysis.total_stocks_analyzed || 0;
     }
     
-    // Update trading status
+    // Update trading status - use current_mode for real-time accuracy
     const statusEl = document.getElementById('trading-status');
     if (statusEl) {
-        if (analysis.trading_suitable) {
+        if (currentMode === 'TRADING' || isActivelyTrading) {
             statusEl.textContent = '✅ Trading Active';
             statusEl.style.color = 'var(--color-success)';
-        } else if (startupMode === 'NON_MARKET') {
+        } else if (currentMode === 'READY_TO_TRADE') {
+            statusEl.textContent = '🟢 Ready to Trade';
+            statusEl.style.color = 'var(--color-success)';
+        } else if (currentMode === 'WAITING_FOR_ANALYSIS') {
+            statusEl.textContent = '⏳ Waiting for Analysis';
+            statusEl.style.color = 'var(--text-secondary)';
+        } else if (currentMode === 'MONITORING_ONLY') {
+            statusEl.textContent = '👁️ Monitoring Positions';
+            statusEl.style.color = 'var(--color-info)';
+        } else if (currentMode === 'MARKET_CLOSING' || currentMode === 'ANALYSIS_COMPLETE' || currentMode === 'NON_MARKET') {
             statusEl.textContent = '🔍 Analysis Only';
             statusEl.style.color = 'var(--color-warning)';
         } else {
-            statusEl.textContent = '⏳ Waiting for Analysis';
+            statusEl.textContent = '⏳ Initializing...';
             statusEl.style.color = 'var(--text-secondary)';
         }
     }
@@ -252,7 +316,13 @@ function updateMarketAnalysis(data) {
     if (decisionEl && reasonEl) {
         decisionEl.className = 'trading-decision';
         
-        if (analysis.trading_suitable) {
+        if (currentMode === 'TRADING' || isActivelyTrading) {
+            decisionEl.className += ' suitable';
+            reasonEl.textContent = '✅ ' + (analysis.reason || 'Trading in progress - WebSocket connected');
+        } else if (currentMode === 'READY_TO_TRADE') {
+            decisionEl.className += ' suitable';
+            reasonEl.textContent = '✅ Ready to trade - Waiting for entry signals';
+        } else if (analysis.trading_suitable) {
             decisionEl.className += ' suitable';
             reasonEl.textContent = '✅ ' + (analysis.reason || 'Trading conditions favorable');
         } else if (analysis.reason) {
@@ -447,7 +517,7 @@ async function refreshAllData() {
                 updateStatusBadge(statusResp.data.status || 'STOPPED');
                 updateModeBadge(statusResp.data.mode || 'paper');
                 updateButtonStates(statusResp.data.status || 'STOPPED');
-                updateStartupMode(statusResp.data.startup_mode);
+                updateStartupMode(statusResp.data.startup_mode, statusResp.data.current_mode);
                 updateMarketAnalysis(statusResp.data);
             }
             
