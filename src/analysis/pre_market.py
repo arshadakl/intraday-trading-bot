@@ -165,6 +165,8 @@ class PreMarketAnalyzer:
         total_stocks = len(self.stocks)
         analyzed_count = 0
         skipped_count = 0
+        consecutive_failures = 0
+        max_consecutive_failures = 5  # [FIX] Stop after 5 consecutive failures (likely API issue)
         
         for i, stock in enumerate(self.stocks, 1):
             symbol = stock['symbol']
@@ -172,39 +174,42 @@ class PreMarketAnalyzer:
             
             logger.info(f"  [{i}/{total_stocks}] Analyzing {symbol}...")
             
-            # Retry logic for rate limiting
-            analysis = None
-            for retry in range(max_retries + 1):
-                analysis = self.analyze_stock(symbol, token)
-                
-                if analysis is not None:
-                    break
-                    
-                # If failed and not last retry, wait longer before retrying
-                if retry < max_retries:
-                    logger.debug(f"  ↻ Retrying {symbol} after {retry_delay}s delay...")
-                    time.sleep(retry_delay)
+            # [FIX] Remove redundant retry loop - angel_client already handles retries
+            # Just call analyze_stock once and move on quickly
+            analysis = self.analyze_stock(symbol, token)
+            
             
             if analysis:
                 # Apply price filter
                 if not (min_price <= analysis['close'] <= max_price):
                     logger.debug(f"  ⏭️ {symbol} filtered: price {analysis['close']} outside range")
                     skipped_count += 1
-                    continue
-                
-                # Add stock name
-                analysis['name'] = stock.get('name', symbol)
-                
-                self.analyzed_stocks.append(analysis)
-                analyzed_count += 1
+                    # Don't count price filters as consecutive failures
+                else:
+                    # Add stock name
+                    analysis['name'] = stock.get('name', symbol)
+                    self.analyzed_stocks.append(analysis)
+                    analyzed_count += 1
+                    consecutive_failures = 0  # Reset counter on success
             else:
                 skipped_count += 1
+                consecutive_failures += 1
+                
+                # [FIX] Stop analysis if too many consecutive failures (API likely down)
+                if consecutive_failures >= max_consecutive_failures:
+                    logger.error(f"❌ Stopping analysis after {consecutive_failures} consecutive failures")
+                    logger.error(f"⚠️ API may be rate-limited or unavailable. Analyzed {analyzed_count} stocks before failure.")
+                    break
             
-            # Rate limiting: wait between requests (except after last stock)
+            # [FIX] Shorter delay between requests to complete analysis faster
             if i < total_stocks:
                 time.sleep(request_delay)
         
-        logger.info(f"✅ Successfully analyzed {analyzed_count} stocks ({skipped_count} skipped)")
+        if analyzed_count > 0:
+            logger.info(f"✅ Successfully analyzed {analyzed_count} stocks ({skipped_count} skipped)")
+        else:
+            logger.error(f"❌ Analysis failed - no stocks analyzed ({skipped_count} failed)")
+        
         return self.analyzed_stocks
     
     def select_top_stocks(self, n: int = None) -> List[Dict]:

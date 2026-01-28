@@ -214,8 +214,17 @@ class AngelOneClient:
             return None
             
         import time
-        max_retries = 3
-        retry_delay = 1 # Start with 1 second
+        from src.utils.timezone import now_ist_time
+        
+        # [FIX] Reduce retries during market hours (9:00-15:30) when API is overloaded
+        current_time = now_ist_time()
+        is_market_hours = (current_time.hour == 9 and current_time.minute >= 0) or \
+                         (9 < current_time.hour < 15) or \
+                         (current_time.hour == 15 and current_time.minute <= 30)
+        
+        # During market hours: fail fast (1 retry only), outside market hours: retry more
+        max_retries = 1 if is_market_hours else 2
+        retry_delay = 0.5 if is_market_hours else 1  # Faster fail during market hours
         
         for attempt in range(max_retries):
             try:
@@ -256,12 +265,16 @@ class AngelOneClient:
                 message = data.get("message", "").lower()
                 error_code = data.get("errorcode", "")
                 
+                # [FIX] Rate limit error - fail fast, don't retry during market hours
                 if "access denied" in message or "exceeding access rate" in message or error_code == "AB1004":
                     if attempt < max_retries - 1:
-                        logger.warning(f"⏳ Rate limit hit for {symbol} ({error_code}). Retrying in {retry_delay}s... (Attempt {attempt+1}/{max_retries})")
+                        logger.debug(f"⏳ Rate limit hit for {symbol} ({error_code}). Quick retry {attempt+1}/{max_retries}")
                         time.sleep(retry_delay)
-                        retry_delay *= 2 # Exponential backoff
                         continue
+                    else:
+                        # Final attempt failed - log once and return
+                        logger.debug(f"❌ {symbol}: Rate limit - skipping")
+                        return None
                 
                 logger.error(f"Error fetching historical data for {symbol}: {data.get('message')} ({error_code})")
                 return None

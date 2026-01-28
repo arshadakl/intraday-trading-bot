@@ -286,6 +286,19 @@ function updateMarketAnalysis(data) {
         stocksEl.textContent = analysis.total_stocks_analyzed || 0;
     }
     
+    // Update server time display
+    const serverTimeEl = document.getElementById('server-time');
+    if (serverTimeEl && data.server_time) {
+        const istTime = data.server_time.ist || '--';
+        const serverTime = data.server_time.server || '--';
+        const timezone = data.server_time.timezone || 'Local';
+        const offset = data.server_time.offset || '';
+        
+        // Show actual server time (not IST)
+        serverTimeEl.textContent = `🖥️ ${serverTime} ${timezone}`;
+        serverTimeEl.title = `IST (Bot uses): ${istTime} | Server (${offset}): ${serverTime}`;
+    }
+    
     // Update trading status - use current_mode for real-time accuracy
     const statusEl = document.getElementById('trading-status');
     if (statusEl) {
