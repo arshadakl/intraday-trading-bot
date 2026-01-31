@@ -199,12 +199,30 @@ function createTableRow(cells, isHeader = false) {
     const baseClass = isHeader ? 'table-header' : 'table-cell';
     const borderClass = isHeader ? 'border-b border-border-subtle' : '';
     
-    const cellsHtml = cells.map((cell, index) => {
-        const alignment = cell.align || (isHeader ? 'text-left' : 'text-left');
-        return `<${tag} class="${baseClass} ${alignment} ${cell.class || ''}">${cell.content}</${tag}>`;
-    }).join('');
+    const row = document.createElement('tr');
+    if (borderClass) {
+        row.className = borderClass;
+    }
     
-    return `<tr class="${borderClass}">${cellsHtml}</tr>`;
+    cells.forEach((cell, index) => {
+        const cellElement = document.createElement(tag);
+        const alignment = cell.align || (isHeader ? 'text-left' : 'text-left');
+        cellElement.className = `${baseClass} ${alignment} ${cell.class || ''}`.trim();
+        
+        // Safely set content - use textContent for strings, innerHTML only for trusted HTML
+        if (typeof cell.content === 'string' && !cell.allowHTML) {
+            cellElement.textContent = cell.content;
+        } else if (cell.allowHTML && cell.content) {
+            // Only allow HTML if explicitly marked as safe
+            cellElement.innerHTML = cell.content;
+        } else {
+            cellElement.textContent = String(cell.content || '');
+        }
+        
+        row.appendChild(cellElement);
+    });
+    
+    return row;
 }
 
 /**
