@@ -1280,3 +1280,105 @@ td {
     font-weight: 600;
     font-family: var(--font-mono);
 }
+
+/* ==================== Strategy Card ==================== */
+.strategy-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+}
+
+.strategy-card h2 {
+    font-size: 0.9rem;
+    margin-bottom: var(--spacing-md);
+    color: var(--text-primary);
+}
+
+.strategy-info {
+    margin-bottom: var(--spacing-md);
+}
+
+.strategy-current {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-xs);
+}
+
+.strategy-current .label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.strategy-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-accent);
+}
+
+.strategy-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.strategy-selector {
+    display: flex;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+}
+
+.strategy-selector select {
+    flex: 1;
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.strategy-selector select:focus {
+    outline: none;
+    border-color: var(--color-accent);
+}
+
+.btn-switch {
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--color-accent);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: white;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.btn-switch:hover:not(:disabled) {
+    background: #0077ed;
+}
+
+.btn-switch:disabled {
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.strategy-warning {
+    padding: var(--spacing-sm);
+    background: rgba(255, 159, 10, 0.1);
+    border: 1px solid rgba(255, 159, 10, 0.3);
+    border-radius: var(--radius-sm);
+    color: var(--color-warning);
+    font-size: 0.75rem;
+    text-align: center;
+}
+
+.strategy-warning.hidden {
+    display: none;
+}

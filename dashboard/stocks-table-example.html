@@ -1,0 +1,68 @@
+<!-- Responsive Stock Table Example -->
+<!-- Add this to your dashboard where you want to display stock information -->
+
+<div class="table-container">
+    <table id="stocks-table">
+        <thead>
+            <tr>
+                <th>Stock</th>
+                <th>LTP</th>
+                <th>Entry</th>
+                <th>Target</th>
+                <th>SL</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody id="stocks-body">
+            <tr>
+                <td data-label="Stock"><strong>TATACONSUM</strong></td>
+                <td data-label="LTP">₹1,133.40</td>
+                <td data-label="Entry">₹1,133.40</td>
+                <td data-label="Target">₹1,161.40</td>
+                <td data-label="SL">₹1,119.40</td>
+                <td data-label="Status" class="status-completed">✅ N/A</td>
+            </tr>
+            <tr>
+                <td data-label="Stock"><strong>UPL</strong></td>
+                <td data-label="LTP">₹714.85</td>
+                <td data-label="Entry">₹714.85</td>
+                <td data-label="Target">₹727.17</td>
+                <td data-label="SL">₹708.69</td>
+                <td data-label="Status" class="status-completed">✅ N/A</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- 
+JavaScript Example to Populate Table Dynamically:
+
+function updateStocksTable(stocks) {
+    const tbody = document.getElementById('stocks-body');
+    
+    if (stocks.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No stocks available</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = stocks.map(stock => `
+        <tr>
+            <td data-label="Stock"><strong>${stock.symbol}</strong></td>
+            <td data-label="LTP">₹${stock.ltp.toFixed(2)}</td>
+            <td data-label="Entry">₹${stock.entry.toFixed(2)}</td>
+            <td data-label="Target">₹${stock.target.toFixed(2)}</td>
+            <td data-label="SL">₹${stock.stop_loss.toFixed(2)}</td>
+            <td data-label="Status" class="status-${stock.status}">${getStatusIcon(stock.status)} ${stock.statusText}</td>
+        </tr>
+    `).join('');
+}
+
+function getStatusIcon(status) {
+    const icons = {
+        'completed': '✅',
+        'pending': '⏳',
+        'failed': '❌'
+    };
+    return icons[status] || '•';
+}
+-->

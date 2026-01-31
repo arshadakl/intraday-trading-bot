@@ -17,7 +17,8 @@ from src.broker.paper_trader import PaperTrader
 from src.broker.websocket_client import AngelWebSocket
 from src.analysis.pre_market import PreMarketAnalyzer
 from src.analysis.stock_scorer import StockScorer
-from src.strategy.vwap_rsi_strategy import VWAPRSIStrategy
+from src.strategy.base_strategy import BaseStrategy
+from src.strategy.strategy_registry import StrategyRegistry
 from src.strategy.risk_manager import RiskManager
 from src.executor.order_manager import OrderManager
 from src.executor.position_tracker import PositionTracker
@@ -45,7 +46,8 @@ class TradingBot:
         self.stock_scorer: Optional[StockScorer] = None
         
         # Strategy & Execution
-        self.strategy: Optional[VWAPRSIStrategy] = None
+        self.strategy: Optional[BaseStrategy] = None
+        self.current_strategy_name: str = "vwap_rsi"  # Track active strategy name
         self.risk_manager: Optional[RiskManager] = None
         self.order_manager: Optional[OrderManager] = None
         self.position_tracker: Optional[PositionTracker] = None
@@ -203,8 +205,21 @@ class TradingBot:
             self.pre_market_analyzer = PreMarketAnalyzer(self.angel_client)
             self.stock_scorer = StockScorer()
             
-            # 5. Initialize strategy
-            self.strategy = VWAPRSIStrategy()
+            # 5. Register and initialize strategy from registry (dynamic, not hardcoded)
+            # Import strategies here to trigger registration (avoids circular imports)
+            from src.strategy.vwap_rsi_strategy import VWAPRSIStrategy  # noqa: F401
+            from src.strategy.ohl_strategy import OHLStrategy  # noqa: F401
+            
+            active_strategy_name = self.config.get('active_strategy', 'vwap_rsi')
+            if not StrategyRegistry.is_registered(active_strategy_name):
+                logger.warning(f"⚠️ Strategy '{active_strategy_name}' not found, falling back to 'vwap_rsi'")
+                active_strategy_name = 'vwap_rsi'
+            
+            self.strategy = StrategyRegistry.get_strategy(active_strategy_name)
+            self.current_strategy_name = active_strategy_name
+            strategy_meta = StrategyRegistry.get_metadata(active_strategy_name)
+            logger.info(f"📈 Active Strategy: {strategy_meta.get('display_name', active_strategy_name)}")
+            self._log_activity("STRATEGY", f"Loaded strategy: {active_strategy_name}")
             
             # 6. Initialize risk manager
             # Use paper_balance if in paper mode (which has the fallback), otherwise use actual balance
@@ -650,6 +665,24 @@ class TradingBot:
         
         return None
     
+    def _log_heartbeat(self) -> None:
+        """Periodic heartbeat to show bot is alive"""
+        mode = self.get_current_mode()
+        positions_count = len(self.position_tracker.get_all_positions()) if self.position_tracker else 0
+        
+        status_emoji = {
+            "TRADING": "🟢",
+            "READY_TO_TRADE": "🟡",
+            "WAITING_FOR_ANALYSIS": "🟠",
+            "MONITORING_ONLY": "🔵",
+            "MARKET_CLOSING": "🟣",
+            "ANALYSIS_COMPLETE": "⚪",
+            "NON_MARKET": "⚫"
+        }
+        
+        emoji = status_emoji.get(mode, "⚪")
+        logger.info(f"{emoji} Heartbeat: Bot is running | Mode: {mode} | Positions: {positions_count} | P&L: ₹{self.daily_stats.get('pnl', 0):+.2f}")
+    
     def _execute_exit(self, position: Dict, signal: Dict, price: float) -> None:
         """Execute an exit order"""
         symbol = position['symbol']
@@ -967,6 +1000,13 @@ class TradingBot:
             10,
             self._poll_pending_orders
         )
+        
+        # Heartbeat log (every 5 minutes) to show bot is alive
+        self.scheduler.schedule_interval(
+            "heartbeat",
+            300,  # 5 minutes
+            self._log_heartbeat
+        )
     
     def _reset_daily_state(self) -> None:
         """Reset daily state before market opens"""
@@ -1033,6 +1073,166 @@ class TradingBot:
         
         logger.info(f"📡 WebSocket monitoring started for {len(tokens)} stocks")
         self._log_activity("TRADING", f"Active trading started - Monitoring {len(tokens)} stocks via WebSocket")
+    
+    def switch_strategy(self, strategy_name: str, force: bool = False) -> Dict[str, Any]:
+        """
+        Switch to a different trading strategy at runtime.
+        
+        Safety Rules:
+        - Cannot switch if positions are open (unless force=True)
+        - Cannot switch to non-existent strategy
+        - Will reset daily state on new strategy
+        
+        Args:
+            strategy_name: Name of strategy to switch to
+            force: If True, allows switching even with open positions (dangerous!)
+            
+        Returns:
+            Dict with success status and message
+        """
+        result = {"success": False, "message": "", "previous": self.current_strategy_name}
+        
+        # Check if strategy exists
+        if not StrategyRegistry.is_registered(strategy_name):
+            available = ", ".join(StrategyRegistry.list_strategies())
+            result["message"] = f"Unknown strategy: '{strategy_name}'. Available: {available}"
+            logger.warning(f"⚠️ {result['message']}")
+            return result
+        
+        # Check if same strategy
+        if strategy_name == self.current_strategy_name:
+            result["message"] = f"Already using strategy: {strategy_name}"
+            result["success"] = True
+            return result
+        
+        # Check for open positions
+        if self.position_tracker:
+            position_count = self.position_tracker.get_position_count()
+            if position_count > 0 and not force:
+                result["message"] = (
+                    f"Cannot switch strategy with {position_count} open position(s). "
+                    "Close positions first or use force=True (dangerous!)"
+                )
+                logger.warning(f"⚠️ {result['message']}")
+                return result
+            elif position_count > 0 and force:
+                logger.warning(f"⚠️ Force-switching strategy with {position_count} open positions!")
+        
+        # Perform the switch
+        try:
+            old_strategy = self.current_strategy_name
+            old_meta = StrategyRegistry.get_metadata(old_strategy)
+            
+            # Get new strategy instance
+            self.strategy = StrategyRegistry.get_strategy(strategy_name)
+            self.current_strategy_name = strategy_name
+            new_meta = StrategyRegistry.get_metadata(strategy_name)
+            
+            # Reset daily state on new strategy
+            if hasattr(self.strategy, 'reset_daily'):
+                self.strategy.reset_daily()
+            
+            # Update config
+            self.config.set('active_strategy', strategy_name)
+            
+            # Log the switch
+            logger.success(
+                f"✅ Strategy switched: {old_meta.get('display_name', old_strategy)} → "
+                f"{new_meta.get('display_name', strategy_name)}"
+            )
+            self._log_activity(
+                "STRATEGY", 
+                f"Switched from {old_strategy} to {strategy_name}",
+                {"old": old_strategy, "new": strategy_name}
+            )
+            
+            result["success"] = True
+            result["message"] = f"Successfully switched to {new_meta.get('display_name', strategy_name)}"
+            result["new"] = strategy_name
+            
+            return result
+            
+        except Exception as e:
+            result["message"] = f"Failed to switch strategy: {str(e)}"
+            logger.error(f"❌ {result['message']}")
+            return result
+    
+    def get_available_strategies(self) -> List[Dict]:
+        """
+        Get list of all available strategies with their metadata.
+        
+        Returns:
+            List of strategy info dicts
+        """
+        strategies = StrategyRegistry.get_all_strategies_info()
+        
+        # Mark which one is active
+        for s in strategies:
+            s['is_active'] = (s['name'] == self.current_strategy_name)
+        
+        return strategies
+    
+    def get_strategy_params(self, strategy_name: str = None) -> Dict:
+        """
+        Get parameters for a strategy.
+        
+        Args:
+            strategy_name: Strategy to get params for. If None, uses active strategy.
+            
+        Returns:
+            Dict of strategy parameters
+        """
+        name = strategy_name or self.current_strategy_name
+        
+        # Get from config
+        params = self.config.get(f'strategies.{name}.params', {})
+        
+        # Add metadata
+        meta = StrategyRegistry.get_metadata(name)
+        
+        return {
+            "name": name,
+            "display_name": meta.get('display_name', name),
+            "description": meta.get('description', ''),
+            "params": params,
+            "default_params": meta.get('default_params', {})
+        }
+    
+    def update_strategy_params(self, strategy_name: str, params: Dict) -> bool:
+        """
+        Update parameters for a strategy.
+        
+        Args:
+            strategy_name: Strategy to update
+            params: New parameter values (will be merged with existing)
+            
+        Returns:
+            True if successful
+        """
+        try:
+            # Get current params
+            current = self.config.get(f'strategies.{strategy_name}.params', {})
+            
+            # Merge new params
+            current.update(params)
+            
+            # Save
+            self.config.set(f'strategies.{strategy_name}.params', current)
+            
+            # If this is the active strategy, reinitialize it
+            if strategy_name == self.current_strategy_name:
+                self.strategy = StrategyRegistry.get_strategy(strategy_name)
+                if hasattr(self.strategy, 'reset_daily'):
+                    self.strategy.reset_daily()
+            
+            logger.info(f"📝 Updated params for {strategy_name}: {params}")
+            self._log_activity("STRATEGY", f"Updated params for {strategy_name}", params)
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to update strategy params: {e}")
+            return False
     
     def pause(self) -> bool:
         """Pause trading (keep monitoring but don't trade)"""
@@ -1150,6 +1350,12 @@ class TradingBot:
             "positions": self.position_tracker.get_all_positions() if self.position_tracker else [],
             "daily_stats": self.daily_stats,
             "account": self.get_account_info(),
+            "strategy": {
+                "active": self.current_strategy_name,
+                "display_name": StrategyRegistry.get_metadata(self.current_strategy_name).get('display_name', self.current_strategy_name),
+                "available": StrategyRegistry.list_strategies(),
+                "can_switch": (self.position_tracker.get_position_count() == 0) if self.position_tracker else True
+            },
             "server_time": {
                 "ist": ist_now.strftime("%H:%M:%S"),
                 "ist_date": ist_now.strftime("%Y-%m-%d"),

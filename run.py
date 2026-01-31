@@ -123,11 +123,22 @@ def main():
             if bot.start():
                 logger.success(f"Bot started in {bot.startup_mode} mode")
             
-            logger.info("Starting API server for dashboard...")
-            
-            # Start the API server for dashboard
+            # Start the API server for dashboard (this will block)
             from src.api.server import set_trading_bot, run_server
             set_trading_bot(bot)
+            
+            logger.info("")
+            logger.info("="*60)
+            logger.info("🚀 TRADING BOT IS READY")
+            logger.info("="*60)
+            logger.info(f"Status: {bot.get_current_mode()}")
+            logger.info(f"Mode: {bot.startup_mode}")
+            if bot.selected_stocks:
+                logger.info(f"Stocks: {len(bot.selected_stocks)} stocks ready")
+            logger.info("="*60)
+            logger.info("")
+            
+            # This will block and keep the bot running
             run_server()
             
         else:

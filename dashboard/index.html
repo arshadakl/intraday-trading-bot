@@ -99,6 +99,29 @@
                     </div>
                 </section>
 
+                <!-- Strategy Selection -->
+                <section class="card strategy-card">
+                    <h2>📈 Strategy</h2>
+                    <div class="strategy-info">
+                        <div class="strategy-current">
+                            <span class="label">Active Strategy</span>
+                            <span id="active-strategy-name" class="strategy-name">VWAP + RSI Momentum</span>
+                        </div>
+                        <p id="strategy-description" class="strategy-desc">Price crosses VWAP with RSI confirmation</p>
+                    </div>
+                    <div class="strategy-selector">
+                        <select id="strategy-select">
+                            <option value="vwap_rsi">VWAP + RSI Momentum</option>
+                        </select>
+                        <button id="btn-switch-strategy" class="btn btn-switch" disabled>
+                            🔄 Switch
+                        </button>
+                    </div>
+                    <div id="strategy-warning" class="strategy-warning hidden">
+                        ⚠️ Close all positions before switching strategy
+                    </div>
+                </section>
+
                 <!-- Quick Config -->
                 <section class="card config-card">
                     <h2>⚙️ Quick Config</h2>

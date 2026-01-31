@@ -274,6 +274,126 @@ def create_app() -> Flask:
         except Exception as e:
             return error_response(str(e))
     
+    # ==================== Strategy Management ====================
+    
+    @app.route('/api/strategies', methods=['GET'])
+    @require_auth
+    def list_strategies():
+        """List all available trading strategies"""
+        try:
+            bot, err = get_bot()
+            if err:
+                # Return basic strategy info even if bot not running
+                from src.strategy.strategy_registry import StrategyRegistry
+                strategies = StrategyRegistry.get_all_strategies_info()
+                return success_response({
+                    'strategies': strategies,
+                    'active': None,
+                    'can_switch': False
+                })
+            
+            strategies = bot.get_available_strategies()
+            can_switch = bot.position_tracker.get_position_count() == 0 if bot.position_tracker else True
+            
+            return success_response({
+                'strategies': strategies,
+                'active': bot.current_strategy_name,
+                'can_switch': can_switch
+            })
+            
+        except Exception as e:
+            return error_response(str(e))
+    
+    @app.route('/api/strategy/active', methods=['GET'])
+    @require_auth
+    def get_active_strategy():
+        """Get current active strategy info"""
+        try:
+            bot, err = get_bot()
+            if err:
+                return err
+            
+            strategy_info = bot.get_strategy_params()
+            strategy_info['can_switch'] = (
+                bot.position_tracker.get_position_count() == 0 
+                if bot.position_tracker else True
+            )
+            
+            return success_response(strategy_info)
+            
+        except Exception as e:
+            return error_response(str(e))
+    
+    @app.route('/api/strategy/switch', methods=['POST'])
+    @require_auth
+    def switch_strategy():
+        """Switch to a different trading strategy"""
+        try:
+            bot, err = get_bot()
+            if err:
+                return err
+            
+            data = request.get_json()
+            strategy_name = data.get('strategy')
+            force = data.get('force', False)
+            
+            if not strategy_name:
+                return error_response("Strategy name is required")
+            
+            result = bot.switch_strategy(strategy_name, force=force)
+            
+            if result['success']:
+                return success_response({
+                    'active': result.get('new', strategy_name),
+                    'previous': result.get('previous')
+                }, result['message'])
+            else:
+                return error_response(result['message'])
+            
+        except Exception as e:
+            return error_response(str(e))
+    
+    @app.route('/api/strategy/<strategy_name>/params', methods=['GET'])
+    @require_auth
+    def get_strategy_params(strategy_name):
+        """Get parameters for a specific strategy"""
+        try:
+            bot, err = get_bot()
+            if err:
+                return err
+            
+            params = bot.get_strategy_params(strategy_name)
+            return success_response(params)
+            
+        except Exception as e:
+            return error_response(str(e))
+    
+    @app.route('/api/strategy/<strategy_name>/params', methods=['POST'])
+    @require_auth
+    def update_strategy_params(strategy_name):
+        """Update parameters for a specific strategy"""
+        try:
+            bot, err = get_bot()
+            if err:
+                return err
+            
+            data = request.get_json()
+            if not data:
+                return error_response("No parameters provided")
+            
+            success = bot.update_strategy_params(strategy_name, data)
+            
+            if success:
+                return success_response(
+                    {'strategy': strategy_name, 'updated': data},
+                    f"Updated {strategy_name} parameters"
+                )
+            else:
+                return error_response("Failed to update parameters")
+            
+        except Exception as e:
+            return error_response(str(e))
+    
     # ==================== Trading Data ====================
     
     @app.route('/api/stocks/selected')
@@ -537,6 +657,12 @@ def run_server(host: str = None, port: int = 5000, debug: bool = False):
         debug: Enable debug mode
     """
     import os
+    import logging
+    
+    # Suppress Flask's default logging to console to reduce noise
+    if not debug:
+        log = logging.getLogger('werkzeug')
+        log.setLevel(logging.ERROR)
     
     # Allow public access if DASHBOARD_PUBLIC=true or host explicitly set to 0.0.0.0
     if host is None:
@@ -545,14 +671,20 @@ def run_server(host: str = None, port: int = 5000, debug: bool = False):
     
     app = create_app()
     
+    logger.info("="*60)
     if host == '0.0.0.0':
-        logger.info(f"🌐 Starting API server at http://0.0.0.0:{port} (PUBLIC ACCESS)")
+        logger.info(f"🌐 API server starting at http://0.0.0.0:{port} (PUBLIC ACCESS)")
         logger.info(f"📊 Dashboard accessible from any device on your network")
     else:
-        logger.info(f"🌐 Starting API server at http://{host}:{port}")
-        logger.info(f"📊 Dashboard available at http://{host}:{port}/")
+        logger.info(f"🌐 API server starting at http://{host}:{port}")
+        logger.info(f"📊 Dashboard: http://{host}:{port}/")
+    logger.info("="*60)
+    logger.info("✅ Bot is now running. Logs are being written to logs/bot.log")
+    logger.info("💡 Press Ctrl+C to stop the bot gracefully")
+    logger.info("="*60)
     
-    app.run(host=host, port=port, debug=debug, threaded=True)
+    # Run Flask in non-debug mode with minimal output
+    app.run(host=host, port=port, debug=debug, threaded=True, use_reloader=False)
 
 
 if __name__ == '__main__':

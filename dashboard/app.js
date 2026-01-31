@@ -118,6 +118,34 @@ async function updateConfig(updates) {
     });
 }
 
+// ==================== Strategy API Functions ====================
+
+async function getStrategies() {
+    return fetchAPI('/strategies');
+}
+
+async function getActiveStrategy() {
+    return fetchAPI('/strategy/active');
+}
+
+async function switchStrategy(strategyName, force = false) {
+    return fetchAPI('/strategy/switch', {
+        method: 'POST',
+        body: JSON.stringify({ strategy: strategyName, force })
+    });
+}
+
+async function getStrategyParams(strategyName) {
+    return fetchAPI(`/strategy/${strategyName}/params`);
+}
+
+async function updateStrategyParams(strategyName, params) {
+    return fetchAPI(`/strategy/${strategyName}/params`, {
+        method: 'POST',
+        body: JSON.stringify(params)
+    });
+}
+
 async function startBot() {
     return fetchAPI('/bot/start', { method: 'POST' });
 }
@@ -532,6 +560,11 @@ async function refreshAllData() {
                 updateButtonStates(statusResp.data.status || 'STOPPED');
                 updateStartupMode(statusResp.data.startup_mode, statusResp.data.current_mode);
                 updateMarketAnalysis(statusResp.data);
+                
+                // Update strategy info from status
+                if (statusResp.data.strategy) {
+                    updateStrategyFromStatus(statusResp.data.strategy);
+                }
             }
             
             // Get account info
@@ -789,6 +822,145 @@ async function handleModeToggle(mode) {
     }
 }
 
+// ==================== Strategy Handlers ====================
+
+async function loadStrategies() {
+    const result = await getStrategies();
+    if (result.success && result.data) {
+        const select = document.getElementById('strategy-select');
+        const strategies = result.data.strategies || [];
+        const active = result.data.active;
+        const canSwitch = result.data.can_switch;
+        
+        // Clear and rebuild options
+        select.innerHTML = '';
+        strategies.forEach(s => {
+            const option = document.createElement('option');
+            option.value = s.name;
+            option.textContent = s.display_name || s.name;
+            if (s.name === active || s.is_active) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+        
+        // Update active strategy display
+        const activeStrategy = strategies.find(s => s.name === active || s.is_active);
+        if (activeStrategy) {
+            document.getElementById('active-strategy-name').textContent = activeStrategy.display_name || activeStrategy.name;
+            document.getElementById('strategy-description').textContent = activeStrategy.description || '';
+        }
+        
+        // Update switch button state
+        updateStrategySwitchButton(canSwitch, select.value, active);
+    }
+}
+
+function handleStrategySelectChange(e) {
+    const selectedValue = e.target.value;
+    const activeStrategyName = document.getElementById('active-strategy-name').textContent;
+    
+    // Get current active strategy name from data attribute or infer
+    const strategies = Array.from(document.getElementById('strategy-select').options);
+    const currentActive = strategies.find(opt => opt.textContent === activeStrategyName)?.value;
+    
+    // Enable switch button if selection is different from active
+    const switchBtn = document.getElementById('btn-switch-strategy');
+    const isActive = selectedValue === currentActive;
+    
+    // Get can_switch state from last status update (stored globally)
+    const canSwitch = window._canSwitchStrategy !== false;
+    
+    switchBtn.disabled = isActive || !canSwitch;
+}
+
+function updateStrategySwitchButton(canSwitch, selected, active) {
+    const switchBtn = document.getElementById('btn-switch-strategy');
+    const warning = document.getElementById('strategy-warning');
+    
+    // Store globally for event handler
+    window._canSwitchStrategy = canSwitch;
+    
+    if (!canSwitch) {
+        switchBtn.disabled = true;
+        warning.classList.remove('hidden');
+    } else {
+        warning.classList.add('hidden');
+        switchBtn.disabled = selected === active;
+    }
+}
+
+async function handleSwitchStrategy() {
+    const select = document.getElementById('strategy-select');
+    const strategyName = select.value;
+    const strategyDisplayName = select.options[select.selectedIndex]?.textContent || strategyName;
+    
+    if (!confirm(`Switch to "${strategyDisplayName}" strategy?`)) {
+        return;
+    }
+    
+    const switchBtn = document.getElementById('btn-switch-strategy');
+    switchBtn.disabled = true;
+    switchBtn.textContent = '⏳ Switching...';
+    
+    try {
+        const result = await switchStrategy(strategyName);
+        
+        if (result.success) {
+            addLogEntry('STRATEGY', `Switched to ${strategyDisplayName}`);
+            
+            // Update UI
+            document.getElementById('active-strategy-name').textContent = strategyDisplayName;
+            
+            // Get description from option or fetch
+            const strategies = await getStrategies();
+            if (strategies.success && strategies.data) {
+                const newActive = strategies.data.strategies.find(s => s.name === strategyName);
+                if (newActive) {
+                    document.getElementById('strategy-description').textContent = newActive.description || '';
+                }
+            }
+            
+            switchBtn.textContent = '✅ Switched!';
+            setTimeout(() => {
+                switchBtn.textContent = '🔄 Switch';
+                switchBtn.disabled = true; // Already on selected strategy
+            }, 2000);
+        } else {
+            alert(`Failed to switch strategy: ${result.error || result.message}`);
+            switchBtn.textContent = '🔄 Switch';
+            switchBtn.disabled = false;
+        }
+    } catch (error) {
+        alert(`Error switching strategy: ${error.message}`);
+        switchBtn.textContent = '🔄 Switch';
+        switchBtn.disabled = false;
+    }
+}
+
+function updateStrategyFromStatus(strategyInfo) {
+    if (!strategyInfo) return;
+    
+    const nameEl = document.getElementById('active-strategy-name');
+    const descEl = document.getElementById('strategy-description');
+    const select = document.getElementById('strategy-select');
+    
+    if (nameEl && strategyInfo.display_name) {
+        nameEl.textContent = strategyInfo.display_name;
+    }
+    
+    if (select && strategyInfo.active) {
+        select.value = strategyInfo.active;
+    }
+    
+    // Update switch button based on can_switch
+    updateStrategySwitchButton(
+        strategyInfo.can_switch !== false,
+        select?.value,
+        strategyInfo.active
+    );
+}
+
 async function exitPosition(symbol) {
     if (!confirm(`Exit position for ${symbol}?`)) {
         return;
@@ -853,6 +1025,10 @@ function initEventListeners() {
     document.getElementById('mode-paper')?.addEventListener('click', () => handleModeToggle('paper'));
     document.getElementById('mode-live')?.addEventListener('click', () => handleModeToggle('live'));
     
+    // Strategy
+    document.getElementById('btn-switch-strategy')?.addEventListener('click', handleSwitchStrategy);
+    document.getElementById('strategy-select')?.addEventListener('change', handleStrategySelectChange);
+    
     // Modal
     document.querySelector('.modal-close')?.addEventListener('click', closeSettingsModal);
     document.getElementById('settings-modal')?.addEventListener('click', (e) => {
@@ -878,6 +1054,9 @@ async function loadInitialConfig() {
         if (paperBtn) paperBtn.classList.toggle('active', mode === 'paper');
         if (liveBtn) liveBtn.classList.toggle('active', mode === 'live');
     }
+    
+    // Load available strategies
+    await loadStrategies();
 }
 
 function init() {
