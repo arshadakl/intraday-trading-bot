@@ -123,11 +123,27 @@ def main():
             if bot.start():
                 logger.success(f"Bot started in {bot.startup_mode} mode")
             
-            logger.info("Starting API server for dashboard...")
-            
-            # Start the API server for dashboard
+            # Start the API server for dashboard (this will block)
             from src.api.server import set_trading_bot, run_server
             set_trading_bot(bot)
+            
+            logger.info("")
+            logger.info("="*60)
+            logger.info("🚀 TRADING BOT IS READY")
+            logger.info("="*60)
+            logger.info(f"Status: {bot.get_current_mode()}")
+            logger.info(f"Mode: {bot.startup_mode}")
+            # Safely check stocks count
+            stocks = getattr(bot, "selected_stocks", None)
+            try:
+                stock_count = len(stocks) if stocks is not None else 0
+            except TypeError:
+                stock_count = 0
+            logger.info(f"Stocks: {stock_count} stocks ready")
+            logger.info("="*60)
+            logger.info("")
+            
+            # This will block and keep the bot running
             run_server()
             
         else:

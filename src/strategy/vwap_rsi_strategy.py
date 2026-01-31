@@ -5,9 +5,22 @@ from typing import Dict, Optional, List
 from loguru import logger
 
 from .base_strategy import BaseStrategy
+from .strategy_registry import StrategyRegistry
 from src.core.config_manager import get_config
 
 
+@StrategyRegistry.register(
+    name="vwap_rsi",
+    display_name="VWAP + RSI Momentum",
+    description="Price crosses VWAP with RSI confirmation for momentum entries",
+    stock_picker="momentum",
+    default_params={
+        "rsi_oversold": 40,
+        "rsi_overbought": 70,
+        "consolidation_threshold": 0.005,
+        "volume_breakout_threshold": 1.5
+    }
+)
 class VWAPRSIStrategy(BaseStrategy):
     """
     VWAP + RSI Crossover Strategy for intraday trading.
@@ -26,15 +39,34 @@ class VWAPRSIStrategy(BaseStrategy):
     - Time is 3:15 PM (forced square-off)
     """
     
+    # Class-level metadata for strategy registry
+    display_name = "VWAP + RSI Momentum"
+    description = "Price crosses VWAP with RSI confirmation for momentum entries"
+    
     def __init__(self):
         super().__init__("vwap_rsi")
         self.config = get_config()
         
-        # Strategy parameters from config
-        self.stop_loss_percent = self.config.stop_loss_percent
-        self.target_percent = self.config.target_percent
-        self.rsi_oversold = self.config.get('strategy.rsi_oversold', 40)
-        self.rsi_overbought = self.config.get('strategy.rsi_overbought', 70)
+        # Try to get params from new multi-strategy config, fallback to legacy
+        strategy_params = self.config.get('strategies.vwap_rsi.params', {})
+        
+        # Strategy parameters from config (new format with legacy fallback)
+        self.stop_loss_percent = strategy_params.get(
+            'stop_loss_percent', 
+            self.config.stop_loss_percent
+        )
+        self.target_percent = strategy_params.get(
+            'target_percent',
+            self.config.target_percent
+        )
+        self.rsi_oversold = strategy_params.get(
+            'rsi_oversold',
+            self.config.get('strategy.rsi_oversold', 40)
+        )
+        self.rsi_overbought = strategy_params.get(
+            'rsi_overbought',
+            self.config.get('strategy.rsi_overbought', 70)
+        )
         
         # Track recent prices for crossover detection
         self.previous_prices: Dict[str, float] = {}
@@ -43,10 +75,22 @@ class VWAPRSIStrategy(BaseStrategy):
         # Professional enhancements
         self.price_history: Dict[str, List[float]] = {}  # For consolidation detection
         self.price_history_size = 5  # Track last 5 candles
-        self.consolidation_threshold = self.config.get('strategy.consolidation_threshold', 0.005)  # 0.5%
-        self.volume_breakout_threshold = self.config.get('strategy.volume_breakout_threshold', 1.5)  # 1.5x
-        self.use_pivot_confluence = self.config.get('strategy.use_pivot_confluence', True)
-        self.require_pivot_confluence = self.config.get('strategy.require_pivot_confluence', False)
+        self.consolidation_threshold = strategy_params.get(
+            'consolidation_threshold',
+            self.config.get('strategy.consolidation_threshold', 0.005)
+        )
+        self.volume_breakout_threshold = strategy_params.get(
+            'volume_breakout_threshold',
+            self.config.get('strategy.volume_breakout_threshold', 1.5)
+        )
+        self.use_pivot_confluence = strategy_params.get(
+            'use_pivot_confluence',
+            self.config.get('strategy.use_pivot_confluence', True)
+        )
+        self.require_pivot_confluence = strategy_params.get(
+            'require_pivot_confluence',
+            self.config.get('strategy.require_pivot_confluence', False)
+        )
     
     def reset_daily(self) -> None:
         """
