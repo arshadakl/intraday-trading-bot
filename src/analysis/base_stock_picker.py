@@ -1,5 +1,6 @@
 """Base Stock Picker - Abstract base class for stock selection strategies"""
 
+import threading
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 from loguru import logger
@@ -315,33 +316,39 @@ class StockPickerRegistry:
     """
     Registry for stock pickers.
     Similar to StrategyRegistry but for stock selection.
+    Thread-safe: Uses locks for all registry access.
     """
     
     _pickers: Dict[str, BaseStockPicker] = {}
+    _lock = threading.Lock()
     
     @classmethod
     def register(cls, name: str, picker: BaseStockPicker) -> None:
         """Register a stock picker"""
-        cls._pickers[name] = picker
+        with cls._lock:
+            cls._pickers[name] = picker
         logger.debug(f"📝 Registered stock picker: {name}")
     
     @classmethod
     def get_picker(cls, name: str) -> BaseStockPicker:
         """Get a registered picker by name"""
-        if name not in cls._pickers:
-            logger.warning(f"Unknown picker '{name}', using default")
-            return cls._pickers.get('default', DefaultStockPicker())
-        return cls._pickers[name]
+        with cls._lock:
+            if name not in cls._pickers:
+                logger.warning(f"Unknown picker '{name}', using default")
+                return cls._pickers.get('default', DefaultStockPicker())
+            return cls._pickers[name]
     
     @classmethod
     def list_pickers(cls) -> List[str]:
         """List all registered picker names"""
-        return list(cls._pickers.keys())
+        with cls._lock:
+            return list(cls._pickers.keys())
     
     @classmethod
     def is_registered(cls, name: str) -> bool:
         """Check if picker is registered"""
-        return name in cls._pickers
+        with cls._lock:
+            return name in cls._pickers
 
 
 # Register default pickers
