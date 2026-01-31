@@ -13,12 +13,9 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/public/favicon_io/apple-touch-icon.png">
 
     <link rel="stylesheet" href="styles.css?v=20260131">
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-        rel="stylesheet">
 </head>
 
-<body>
+<body class="bg-bg-primary text-text-primary min-h-screen flex flex-col font-sans antialiased">
     <!-- Auth Check -->
     <script>
         (function () {
@@ -38,173 +35,222 @@
     </script>
 
     <!-- Header -->
-    <header class="header">
-        <div class="header-left">
-            <img src="/public/trading-bot-logo-png.png" alt="Trading Bot" class="logo-img">
-            <h1>ZERO</h1>
-        </div>
-        <div class="header-right">
-            <span id="startup-mode-badge" class="badge startup-mode-pre">🌅 PRE-MARKET</span>
-            <span id="status-badge" class="badge status-stopped">⚪ STOPPED</span>
-            <span id="mode-badge" class="badge mode-paper">PAPER</span>
-            <span id="current-time" class="time">--:--:--</span>
-            <button id="btn-logout" class="btn btn-logout" title="Logout" onclick="logout()">🚪</button>
+    <header class="sticky top-0 z-50 glass-effect border-b border-border-subtle">
+        <div class="flex justify-between items-center px-4 py-2 md:px-6 md:py-4">
+            <div class="flex items-center gap-2">
+                <img src="/public/trading-bot-logo-png.png" alt="Trading Bot" class="h-7 w-auto md:h-8">
+                <h1 class="text-xs md:text-base font-semibold tracking-wide">ZERO</h1>
+            </div>
+            <div class="flex items-center gap-1 md:gap-2 flex-wrap">
+                <span id="startup-mode-badge"
+                    class="badge bg-purple-custom/15 text-purple-custom border border-purple-custom/30">🌅
+                    PRE-MARKET</span>
+                <span id="status-badge" class="badge bg-bg-elevated text-text-muted">⚪ STOPPED</span>
+                <span id="mode-badge" class="badge hide-mobile bg-teal/15 text-teal border border-teal/30">PAPER</span>
+                <span id="current-time" class="font-mono text-xs md:text-sm text-text-secondary">--:--:--</span>
+                <button id="btn-logout"
+                    class="ml-2 px-3 py-1.5 bg-danger/10 hover:bg-danger/20 text-danger border border-danger/20 rounded-md text-xs font-medium transition-colors duration-200"
+                    title="Logout" onclick="logout()">🚪</button>
+            </div>
         </div>
     </header>
 
     <!-- Tab Navigation -->
-    <nav class="tab-nav">
-        <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
-        <button class="tab-btn" data-tab="logs">📜 Logs</button>
-        <button class="tab-btn" data-tab="reports">📈 Reports</button>
+    <nav class="sticky top-[60px] md:top-[72px] z-40 bg-bg-secondary border-b border-border-subtle">
+        <div class="flex justify-center gap-1 px-4 py-2">
+            <button class="tab-btn btn-primary" data-tab="dashboard">📊 Dashboard</button>
+            <button class="tab-btn btn-secondary" data-tab="logs">📜 Logs</button>
+            <button class="tab-btn btn-secondary" data-tab="reports">📈 Reports</button>
+        </div>
     </nav>
 
     <!-- Dashboard Tab -->
-    <main class="tab-content" id="tab-dashboard">
-        <div class="dashboard-grid">
+    <main class="tab-content flex-1 p-4 md:p-6" id="tab-dashboard">
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 max-w-7xl mx-auto">
             <!-- Left Column -->
-            <div class="left-column">
+            <div class="xl:col-span-1 space-y-6">
                 <!-- Account Info -->
-                <section class="card account-card">
-                    <h2>💰 Account Info</h2>
-                    <div class="account-grid">
-                        <div class="account-item">
-                            <span class="label">Total Balance</span>
-                            <span id="total-balance" class="value">₹0.00</span>
+                <section class="card">
+                    <h2 class="text-lg font-semibold mb-4 text-text-primary">💰 Account Info</h2>
+                    <div class="grid grid-cols-2 gap-4 mb-6">
+                        <div class="space-y-1">
+                            <span class="text-xs text-text-muted uppercase tracking-wide">Total Balance</span>
+                            <div id="total-balance" class="text-lg font-semibold text-text-primary">₹0.00</div>
                         </div>
-                        <div class="account-item">
-                            <span class="label">Available</span>
-                            <span id="available-balance" class="value">₹0.00</span>
+                        <div class="space-y-1">
+                            <span class="text-xs text-text-muted uppercase tracking-wide">Available</span>
+                            <div id="available-balance" class="text-lg font-semibold text-text-primary">₹0.00</div>
                         </div>
-                        <div class="account-item">
-                            <span class="label">Used Margin</span>
-                            <span id="used-margin" class="value">₹0.00</span>
+                        <div class="space-y-1">
+                            <span class="text-xs text-text-muted uppercase tracking-wide">Used Margin</span>
+                            <div id="used-margin" class="text-lg font-semibold text-text-primary">₹0.00</div>
                         </div>
                     </div>
-                    <div class="pnl-section">
-                        <div class="pnl-header">
-                            <span class="label">Today's P&L</span>
-                            <span id="daily-pnl" class="value pnl-positive">+₹0.00</span>
+
+                    <!-- P&L Section -->
+                    <div class="space-y-3 mb-4">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs text-text-muted uppercase tracking-wide">Today's P&L</span>
+                            <span id="daily-pnl" class="text-lg font-semibold pnl-positive">+₹0.00</span>
                         </div>
                         <div class="progress-bar">
-                            <div id="pnl-progress" class="progress-fill"></div>
+                            <div id="pnl-progress" class="progress-fill bg-success" style="width: 0%"></div>
                         </div>
                     </div>
-                    <div class="loss-limit">
-                        <span class="label">Daily Loss Limit</span>
-                        <span id="loss-remaining" class="value-small">₹1,000 remaining</span>
+
+                    <!-- Loss Limit -->
+                    <div class="space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs text-text-muted uppercase tracking-wide">Daily Loss Limit</span>
+                            <span id="loss-remaining" class="text-sm text-text-secondary">₹1,000 remaining</span>
+                        </div>
                         <div class="progress-bar small">
-                            <div id="loss-progress" class="progress-fill warning"></div>
+                            <div id="loss-progress" class="progress-fill bg-warning" style="width: 0%"></div>
                         </div>
                     </div>
                 </section>
 
                 <!-- Strategy Selection -->
-                <section class="card strategy-card">
-                    <h2>📈 Strategy</h2>
-                    <div class="strategy-info">
-                        <div class="strategy-current">
-                            <span class="label">Active Strategy</span>
-                            <span id="active-strategy-name" class="strategy-name">VWAP + RSI Momentum</span>
+                <section class="card">
+                    <h2 class="text-lg font-semibold mb-4 text-text-primary">📈 Strategy</h2>
+                    <div class="space-y-3 mb-4">
+                        <div class="space-y-1">
+                            <span class="text-xs text-text-muted uppercase tracking-wide">Active Strategy</span>
+                            <div id="active-strategy-name" class="text-base font-medium text-accent">VWAP + RSI Momentum
+                            </div>
                         </div>
-                        <p id="strategy-description" class="strategy-desc">Price crosses VWAP with RSI confirmation</p>
+                        <p id="strategy-description" class="text-sm text-text-secondary">Price crosses VWAP with RSI
+                            confirmation</p>
                     </div>
-                    <div class="strategy-selector">
-                        <select id="strategy-select">
+
+                    <div class="space-y-3">
+                        <select id="strategy-select" class="form-select">
                             <option value="vwap_rsi">VWAP + RSI Momentum</option>
                         </select>
-                        <button id="btn-switch-strategy" class="btn btn-switch" disabled>
+                        <button id="btn-switch-strategy"
+                            class="w-full px-4 py-2 bg-accent/10 text-accent border border-accent/20 rounded-lg text-sm font-medium transition-colors duration-200 hover:bg-accent/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled>
                             🔄 Switch
                         </button>
                     </div>
-                    <div id="strategy-warning" class="strategy-warning hidden">
+
+                    <div id="strategy-warning" class="hidden mt-3 message-warning">
                         ⚠️ Close all positions before switching strategy
                     </div>
                 </section>
 
                 <!-- Quick Config -->
-                <section class="card config-card">
-                    <h2>⚙️ Quick Config</h2>
-                    <div class="config-item">
-                        <label for="stop-loss">Stop Loss %</label>
-                        <select id="stop-loss">
-                            <option value="0.5">0.5%</option>
-                            <option value="0.75">0.75%</option>
-                            <option value="1.0">1.0%</option>
-                        </select>
-                    </div>
-                    <div class="config-item">
-                        <label for="target">Target %</label>
-                        <select id="target">
-                            <option value="1.0">1.0%</option>
-                            <option value="1.25">1.25%</option>
-                            <option value="1.5">1.5%</option>
-                        </select>
-                    </div>
-                    <div class="config-item">
-                        <label for="max-trades">Max Trades</label>
-                        <select id="max-trades">
-                            <option value="1">1</option>
-                            <option value="2">2</option>
-                            <option value="3" selected>3</option>
-                            <option value="4">4</option>
-                            <option value="5">5</option>
-                        </select>
-                    </div>
-                    <div class="config-item mode-toggle">
-                        <label>Trading Mode</label>
-                        <div class="toggle-group">
-                            <button id="mode-paper" class="toggle-btn active">Paper</button>
-                            <button id="mode-live" class="toggle-btn">Live</button>
+                <section class="card">
+                    <h2 class="text-lg font-semibold mb-4 text-text-primary">⚙️ Quick Config</h2>
+                    <div class="space-y-4">
+                        <div class="space-y-2">
+                            <label for="stop-loss" class="block text-sm text-text-secondary">Stop Loss %</label>
+                            <select id="stop-loss" class="form-select">
+                                <option value="0.5">0.5%</option>
+                                <option value="0.75">0.75%</option>
+                                <option value="1.0">1.0%</option>
+                            </select>
                         </div>
+                        <div class="space-y-2">
+                            <label for="target" class="block text-sm text-text-secondary">Target %</label>
+                            <select id="target" class="form-select">
+                                <option value="1.0">1.0%</option>
+                                <option value="1.25">1.25%</option>
+                                <option value="1.5">1.5%</option>
+                            </select>
+                        </div>
+                        <div class="space-y-2">
+                            <label for="max-trades" class="block text-sm text-text-secondary">Max Trades</label>
+                            <select id="max-trades" class="form-select">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3" selected>3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                            </select>
+                        </div>
+                        <div class="space-y-2">
+                            <label class="block text-sm text-text-secondary">Trading Mode</label>
+                            <div class="flex gap-2">
+                                <button id="mode-paper" class="flex-1 btn-primary py-2">Paper</button>
+                                <button id="mode-live" class="flex-1 btn-secondary py-2">Live</button>
+                            </div>
+                        </div>
+                        <button id="save-config" class="w-full btn-success py-2">💾 Save Changes</button>
                     </div>
-                    <button id="save-config" class="btn btn-save">💾 Save Changes</button>
+                </section>
+
+                <!-- Bot Controls -->
+                <section class="card">
+                    <h2 class="text-lg font-semibold mb-4 text-text-primary">🤖 Bot Controls</h2>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button id="btn-start" class="btn-success py-3">
+                            ▶️ Start
+                        </button>
+                        <button id="btn-stop" class="btn-danger py-3" disabled>
+                            ⏹️ Stop
+                        </button>
+                        <button id="btn-pause" class="btn-warning py-3" disabled>
+                            ⏸️ Pause
+                        </button>
+                        <button id="btn-resume" class="btn-primary py-3" disabled>
+                            ▶️ Resume
+                        </button>
+                    </div>
+                    <button id="btn-close-all"
+                        class="w-full mt-3 px-4 py-2 bg-danger/20 hover:bg-danger/30 text-danger border border-danger/30 rounded-lg text-sm font-medium transition-colors duration-200">
+                        🚫 Close All Positions
+                    </button>
                 </section>
             </div>
 
-            <!-- Center Column -->
-            <div class="center-column">
-                <section id="market-analysis-section" class="card analysis-card">
-                    <h2>🔍 Market Analysis Status</h2>
-                    <div class="analysis-info">
-                        <div class="analysis-item">
-                            <span class="label">Startup Mode</span>
-                            <span id="analysis-startup-mode" class="value mode-text">Waiting...</span>
+            <!-- Right Column -->
+            <div class="xl:col-span-2 space-y-6">
+                <!-- Market Analysis -->
+                <section id="market-analysis-section" class="card">
+                    <h2 class="text-lg font-semibold mb-4 text-text-primary">🔍 Market Analysis Status</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                        <div class="space-y-1">
+                            <span class="text-xs text-text-muted uppercase tracking-wide">Startup Mode</span>
+                            <div id="analysis-startup-mode" class="text-sm font-medium text-text-primary">Waiting...
+                            </div>
                         </div>
-                        <div class="analysis-item">
-                            <span class="label">Analysis Time</span>
-                            <span id="analysis-time" class="value">Not analyzed yet</span>
+                        <div class="space-y-1">
+                            <span class="text-xs text-text-muted uppercase tracking-wide">Analysis Time</span>
+                            <div id="analysis-time" class="text-sm font-medium text-text-primary">Not analyzed yet</div>
                         </div>
-                        <div class="analysis-item">
-                            <span class="label">Stocks Analyzed</span>
-                            <span id="stocks-analyzed" class="value">0</span>
+                        <div class="space-y-1">
+                            <span class="text-xs text-text-muted uppercase tracking-wide">Stocks Analyzed</span>
+                            <div id="stocks-analyzed" class="text-sm font-medium text-text-primary">0</div>
                         </div>
-                        <div class="analysis-item">
-                            <span class="label">Trading Status</span>
-                            <span id="trading-status" class="value">--</span>
+                        <div class="space-y-1">
+                            <span class="text-xs text-text-muted uppercase tracking-wide">Trading Status</span>
+                            <div id="trading-status" class="text-sm font-medium text-text-primary">--</div>
                         </div>
-                        <div class="analysis-item">
-                            <span class="label">Server Time</span>
-                            <span id="server-time" class="value" title="Server timezone">--</span>
+                        <div class="space-y-1">
+                            <span class="text-xs text-text-muted uppercase tracking-wide">Server Time</span>
+                            <div id="server-time" class="text-sm font-medium text-text-primary font-mono"
+                                title="Server timezone">--</div>
                         </div>
                     </div>
-                    <div id="trading-decision" class="trading-decision">
-                        <p id="trading-reason">Waiting for analysis...</p>
+                    <div id="trading-decision" class="p-3 bg-bg-elevated rounded-lg">
+                        <p id="trading-reason" class="text-sm text-text-secondary">Waiting for analysis...</p>
                     </div>
                 </section>
 
-                <section class="card stocks-card">
-                    <h2>📋 Today's Selected Stocks</h2>
-                    <div class="table-container">
-                        <table id="stocks-table">
+                <!-- Selected Stocks -->
+                <section class="card">
+                    <h2 class="text-lg font-semibold mb-4 text-text-primary">📋 Today's Selected Stocks</h2>
+                    <div class="overflow-x-auto">
+                        <table id="stocks-table" class="w-full">
                             <thead>
-                                <tr>
-                                    <th>Stock</th>
-                                    <th>LTP</th>
-                                    <th>Entry</th>
-                                    <th>Target</th>
-                                    <th>SL</th>
-                                    <th>Status</th>
+                                <tr class="border-b border-border-subtle">
+                                    <th class="table-header">Stock</th>
+                                    <th class="table-header text-right">LTP</th>
+                                    <th class="table-header text-right">Entry</th>
+                                    <th class="table-header text-right">Target</th>
+                                    <th class="table-header text-right">SL</th>
+                                    <th class="table-header text-center">Status</th>
                                 </tr>
                             </thead>
                             <tbody id="stocks-body"></tbody>
@@ -212,81 +258,94 @@
                     </div>
                 </section>
 
-                <section class="card positions-card">
-                    <h2>📈 Open Positions</h2>
-                    <div id="positions-container"></div>
+                <!-- Open Positions -->
+                <section class="card">
+                    <h2 class="text-lg font-semibold mb-4 text-text-primary">📈 Open Positions</h2>
+                    <div id="positions-container" class="space-y-3">
+                        <div class="text-center py-8 text-text-muted">No open positions</div>
+                    </div>
                 </section>
 
-                <section class="card trades-card">
-                    <h2>📊 Today's Trades</h2>
-                    <div class="table-container">
-                        <table id="trades-table">
+                <!-- Today's Trades -->
+                <section class="card">
+                    <h2 class="text-lg font-semibold mb-4 text-text-primary">📊 Today's Trades</h2>
+                    <div class="overflow-x-auto">
+                        <table id="trades-table" class="w-full">
                             <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>Stock</th>
-                                    <th>Buy</th>
-                                    <th>Sell</th>
-                                    <th>P&L</th>
-                                    <th>Status</th>
+                                <tr class="border-b border-border-subtle">
+                                    <th class="table-header">#</th>
+                                    <th class="table-header">Stock</th>
+                                    <th class="table-header text-right">Buy</th>
+                                    <th class="table-header text-right">Sell</th>
+                                    <th class="table-header text-right">P&L</th>
+                                    <th class="table-header text-center">Status</th>
                                 </tr>
                             </thead>
                             <tbody id="trades-body"></tbody>
                         </table>
                     </div>
-                    <div class="trades-summary">
-                        <span>Total P&L: <strong id="total-pnl">₹0.00</strong></span>
-                        <span>Win Rate: <strong id="win-rate">0%</strong></span>
+                    <div class="flex justify-between items-center mt-4 p-3 bg-bg-elevated rounded-lg">
+                        <span class="text-sm text-text-secondary">Total P&L: <strong id="total-pnl"
+                                class="text-text-primary">₹0.00</strong></span>
+                        <span class="text-sm text-text-secondary">Win Rate: <strong id="win-rate"
+                                class="text-text-primary">0%</strong></span>
                     </div>
                 </section>
-            </div>
-
-            <!-- Right Column -->
-            <div class="right-column">
-                <section class="card log-card">
-                    <h2>📜 Activity Log</h2>
-                    <div id="activity-log" class="log-container"></div>
+                <!-- Activity Log -->
+                <section class="card">
+                    <h2 class="text-lg font-semibold mb-4 text-text-primary">📜 Activity Log</h2>
+                    <div id="activity-log" class="logs-container h-64">
+                        <div class="text-text-muted text-sm">No activity yet...</div>
+                    </div>
                 </section>
             </div>
         </div>
     </main>
 
     <!-- Logs Tab -->
-    <main class="tab-content hidden" id="tab-logs">
-        <section class="card log-file-card">
-            <div class="log-header">
-                <h2>📜 Log File Viewer</h2>
-                <div class="log-controls">
-                    <select id="log-lines-select">
-                        <option value="100">Last 100 lines</option>
-                        <option value="200" selected>Last 200 lines</option>
-                        <option value="500">Last 500 lines</option>
-                    </select>
-                    <button id="btn-refresh-logs" class="btn btn-small">🔄 Refresh</button>
-                    <label class="auto-refresh-label">
-                        <input type="checkbox" id="log-auto-refresh" checked> Auto-refresh
-                    </label>
+    <div class="tab-content hidden p-4 md:p-6" id="tab-logs">
+        <div class="max-w-7xl mx-auto">
+            <div class="card">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold text-text-primary">📜 Log File Viewer</h2>
+                    <div class="flex items-center gap-2">
+                        <select id="log-lines-select" class="form-select py-1.5 text-xs">
+                            <option value="100">Last 100 lines</option>
+                            <option value="200" selected>Last 200 lines</option>
+                            <option value="500">Last 500 lines</option>
+                        </select>
+                        <button id="btn-refresh-logs"
+                            class="px-3 py-1.5 bg-accent/10 hover:bg-accent/20 text-accent rounded-md text-xs font-medium transition-colors duration-200">🔄
+                            Refresh</button>
+                        <label class="flex items-center gap-1 text-xs text-text-secondary">
+                            <input type="checkbox" id="log-auto-refresh" checked class="rounded"> Auto-refresh
+                        </label>
+                    </div>
                 </div>
+                <pre id="log-file-content" class="logs-container h-96 whitespace-pre-wrap">Loading logs...</pre>
             </div>
-            <pre id="log-file-content" class="log-file-viewer">Loading logs...</pre>
-        </section>
-    </main>
+        </div>
+    </div>
 
     <!-- Reports Tab -->
-    <main class="tab-content hidden" id="tab-reports">
-        <div class="reports-layout">
-            <section class="card reports-list-card">
-                <h2>📈 Daily Reports</h2>
-                <div id="reports-list" class="reports-list"></div>
-            </section>
-            <section class="card report-detail-card">
-                <h2>Report Details</h2>
-                <div id="report-detail" class="report-detail">
-                    <p class="hint">Select a report from the list to view details.</p>
-                </div>
-            </section>
+    <div class="tab-content hidden p-4 md:p-6" id="tab-reports">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <section class="card">
+                    <h2 class="text-lg font-semibold mb-4 text-text-primary">📈 Daily Reports</h2>
+                    <div id="reports-list" class="space-y-2">
+                        <div class="text-center py-8 text-text-muted">Loading reports...</div>
+                    </div>
+                </section>
+                <section class="card">
+                    <h2 class="text-lg font-semibold mb-4 text-text-primary">Report Details</h2>
+                    <div id="report-detail" class="text-text-secondary">
+                        <p class="text-sm">Select a report from the list to view details.</p>
+                    </div>
+                </section>
+            </div>
         </div>
-    </main>
+    </div>
 
     <!-- Footer / Control Panel -->
     <footer class="control-panel">
@@ -308,21 +367,45 @@
         </button>
     </footer>
 
-    <!-- Settings Modal -->
-    <div id="settings-modal" class="modal hidden">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>⚙️ Full Settings</h2>
-                <button class="modal-close">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p>Full settings coming soon...</p>
-            </div>
-        </div>
-    </div>
+    <!-- Include JavaScript -->
+    <script src="tailwind-utils.js?v=20260131"></script>
+    <script src="app.js?v=20260131"></script>
+    <script src="button-states.js?v=20260131"></script>
 
-    <script src="button-states.js?v=20260131c"></script>
-    <script src="app.js?v=20260131c"></script>
+    <script>
+        // Tab switching functionality
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const targetTab = btn.getAttribute('data-tab');
+                const allBtns = document.querySelectorAll('.tab-btn');
+
+                // Update button states using Tailwind utilities
+                if (window.TailwindUtils) {
+                    TailwindUtils.updateTabState(btn, allBtns);
+                } else {
+                    // Fallback if utils not loaded
+                    allBtns.forEach(b => {
+                        b.classList.remove('btn-primary');
+                        b.classList.add('btn-secondary');
+                    });
+                    btn.classList.remove('btn-secondary');
+                    btn.classList.add('btn-primary');
+                }
+
+                // Show/hide tab content
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.add('hidden');
+                });
+                document.getElementById(`tab-${targetTab}`).classList.remove('hidden');
+            });
+        });
+
+        // Logout function
+        function logout() {
+            localStorage.removeItem('auth_token');
+            window.location.href = '/login';
+        }
+    </script>
 </body>
 
 </html>

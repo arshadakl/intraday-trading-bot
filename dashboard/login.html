@@ -13,62 +13,148 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/public/favicon_io/apple-touch-icon.png">
 
     <link rel="stylesheet" href="styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 
-<body>
-    <div class="login-container">
-        <div class="login-card">
-            <div class="login-header">
-                <img src="/public/trading-bot-logo-png.png" alt="Trading Bot" class="logo-img">
-                <h1>Trading Bot</h1>
-                <p>Secure access to your dashboard</p>
+<body class="bg-bg-primary min-h-screen flex items-center justify-center p-4 font-sans antialiased">
+    <!-- Background gradient -->
+    <div class="absolute inset-0 bg-gradient-to-br from-accent/5 via-bg-primary to-purple-custom/5"></div>
+
+    <div class="relative w-full max-w-md">
+        <div class="glass-card border border-border-color rounded-3xl p-8 shadow-2xl">
+            <!-- Header -->
+            <div class="text-center mb-8">
+                <div class="flex justify-center mb-4">
+                    <img src="/public/trading-bot-logo-png.png" alt="Trading Bot" class="h-16 w-auto">
+                </div>
+                <h1 class="text-2xl font-bold text-text-primary mb-2">Trading Bot</h1>
+                <p class="text-text-secondary text-sm">Secure access to your dashboard</p>
             </div>
 
-            <div class="step-indicator">
-                <div id="step1" class="step active">1</div>
-                <div id="step2" class="step">2</div>
+            <!-- Step Indicator -->
+            <div class="flex justify-center items-center gap-4 mb-8">
+                <div id="step1"
+                    class="flex items-center justify-center w-8 h-8 rounded-full bg-accent text-white text-sm font-semibold">
+                    1
+                </div>
+                <div class="w-8 h-0.5 bg-border-color"></div>
+                <div id="step2"
+                    class="flex items-center justify-center w-8 h-8 rounded-full bg-bg-elevated text-text-muted text-sm font-semibold">
+                    2
+                </div>
             </div>
 
             <!-- Step 1: Request Code -->
-            <div id="step-request" class="login-form">
-                <p class="login-hint">
+            <div id="step-request" class="space-y-6">
+                <p class="text-text-secondary text-center text-sm leading-relaxed">
                     Click below to receive a one-time authentication code on your registered email.
                 </p>
 
-                <div id="message-request" class="message"></div>
+                <div id="message-request" class="text-center text-sm"></div>
 
-                <button id="btn-request-code" class="btn btn-primary" onclick="requestCode()">
-                    📧 Send Auth Code
+                <button id="btn-request-code" class="btn-primary w-full py-3 flex items-center justify-center gap-2"
+                    onclick="requestCode()">
+                    <span>📧</span>
+                    <span>Send Auth Code</span>
                 </button>
             </div>
 
             <!-- Step 2: Verify Code -->
-            <div id="step-verify" class="login-form hidden">
-                <div class="form-group">
-                    <label>Enter 8-Digit Code</label>
-                    <input type="text" id="otp-input" class="otp-input" maxlength="8" placeholder="••••••••"
-                        autocomplete="off" inputmode="numeric">
+            <div id="step-verify" class="hidden space-y-6">
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-text-secondary">Enter 8-Digit Code</label>
+                    <input type="text" id="otp-input" class="form-input text-center text-lg font-mono tracking-widest"
+                        maxlength="8" placeholder="••••••••" autocomplete="one-time-code">
                 </div>
 
-                <div id="message-verify" class="message"></div>
+                <div id="message-verify" class="text-center text-sm"></div>
 
-                <button id="btn-verify" class="btn btn-primary" onclick="verifyCode()">
-                    🔓 Verify & Login
-                </button>
-
-                <div class="timer" id="resend-timer">
-                    Code expires in <span id="timer-value">10:00</span>
+                <div class="grid grid-cols-2 gap-3">
+                    <button id="btn-back" class="btn-secondary py-3" onclick="goBack()">
+                        ← Back
+                    </button>
+                    <button id="btn-verify" class="btn-success py-3" onclick="verifyCode()">
+                        ✓ Verify
+                    </button>
                 </div>
-
-                <button id="btn-resend" class="btn btn-secondary hidden" onclick="requestCode()">
-                    🔄 Resend Code
-                </button>
             </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="text-center mt-6 text-xs text-text-muted">
+            <p>Protected by industry-standard security</p>
         </div>
     </div>
 
+    <script src="tailwind-utils.js"></script>
     <script src="login.js"></script>
+
+    <script>
+        // Enhanced OTP input functionality
+        document.getElementById('otp-input').addEventListener('input', function (e) {
+            const value = e.target.value.replace(/[^0-9]/g, '');
+            e.target.value = value;
+
+            // Auto-verify when 8 digits are entered
+            if (value.length === 8) {
+                setTimeout(() => {
+                    document.getElementById('btn-verify').click();
+                }, 500);
+            }
+        });
+
+        // Auto-focus OTP input when step 2 is shown
+        window.showStep2 = function () {
+            document.getElementById('step-request').classList.add('hidden');
+            document.getElementById('step-verify').classList.remove('hidden');
+
+            // Update step indicator
+            const step1 = document.getElementById('step1');
+            const step2 = document.getElementById('step2');
+
+            step1.classList.remove('bg-accent', 'text-white');
+            step1.classList.add('bg-success', 'text-white');
+            step2.classList.remove('bg-bg-elevated', 'text-text-muted');
+            step2.classList.add('bg-accent', 'text-white');
+
+            // Focus on input
+            setTimeout(() => {
+                document.getElementById('otp-input').focus();
+            }, 300);
+        }
+
+        function goBack() {
+            document.getElementById('step-verify').classList.add('hidden');
+            document.getElementById('step-request').classList.remove('hidden');
+
+            // Reset step indicator
+            const step1 = document.getElementById('step1');
+            const step2 = document.getElementById('step2');
+
+            step1.classList.add('bg-accent', 'text-white');
+            step1.classList.remove('bg-success');
+            step2.classList.add('bg-bg-elevated', 'text-text-muted');
+            step2.classList.remove('bg-accent', 'text-white');
+
+            // Clear input and messages
+            document.getElementById('otp-input').value = '';
+            document.getElementById('message-verify').innerHTML = '';
+        }
+
+        // Enhanced message display using Tailwind utilities
+        window.showLoginMessage = function (elementId, message, isError = false) {
+            const element = document.getElementById(elementId);
+            if (window.TailwindUtils) {
+                if (isError) {
+                    TailwindUtils.showErrorMessage(element, message);
+                } else {
+                    TailwindUtils.showSuccessMessage(element, message);
+                }
+            } else {
+                // Fallback
+                element.innerHTML = `<div class="${isError ? 'message-error' : 'message-success'}">${message}</div>`;
+            }
+        };
+    </script>
 </body>
 
 </html>
