@@ -683,7 +683,10 @@ def run_server(host: str = None, port: int = 5000, debug: bool = False):
     logger.info("💡 Press Ctrl+C to stop the bot gracefully")
     logger.info("="*60)
     
-    # Run Flask in non-debug mode with minimal output
+    # IMPORTANT: use_reloader=False is intentional for trading bots
+    # - Prevents unexpected restarts that could cause missed trades or duplicate orders
+    # - Preserves bot state (positions, WebSocket connections, order tracking)
+    # - For code changes, manually restart the server
     app.run(host=host, port=port, debug=debug, threaded=True, use_reloader=False)
 
 
