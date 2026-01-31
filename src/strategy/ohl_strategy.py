@@ -1,7 +1,7 @@
 """OHL Strategy - Open=High or Open=Low trading strategy"""
 
-from datetime import datetime, time, timedelta
-from typing import Dict, Optional, List
+from datetime import datetime, time
+from typing import Dict, Optional
 from loguru import logger
 
 from .base_strategy import BaseStrategy

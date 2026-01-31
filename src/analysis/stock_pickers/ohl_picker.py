@@ -1,6 +1,6 @@
 """OHL Stock Picker - Stock selection for Open=High/Low strategy"""
 
-from typing import Dict, List, Optional
+from typing import Dict, List
 from loguru import logger
 
 from src.analysis.base_stock_picker import BaseStockPicker, StockPickerRegistry
