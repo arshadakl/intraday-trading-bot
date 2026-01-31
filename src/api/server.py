@@ -284,7 +284,10 @@ def create_app() -> Flask:
             bot, err = get_bot()
             if err:
                 # Return basic strategy info even if bot not running
+                # Import strategies to trigger registration via decorators
                 from src.strategy.strategy_registry import StrategyRegistry
+                from src.strategy.vwap_rsi_strategy import VWAPRSIStrategy  # noqa: F401
+                from src.strategy.ohl_strategy import OHLStrategy  # noqa: F401
                 strategies = StrategyRegistry.get_all_strategies_info()
                 return success_response({
                     'strategies': strategies,
