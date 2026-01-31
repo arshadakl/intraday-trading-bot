@@ -890,7 +890,16 @@ function updateStrategySwitchButton(canSwitch, selected, active) {
     }
 }
 
+// Flag to prevent concurrent strategy switch requests
+let _switchingStrategy = false;
+
 async function handleSwitchStrategy() {
+    // Prevent concurrent switch requests (race condition protection)
+    if (_switchingStrategy) {
+        return;
+    }
+    _switchingStrategy = true;
+    
     const select = document.getElementById('strategy-select');
     const strategyName = select.value;
     const strategyDisplayName = select.options[select.selectedIndex]?.textContent || strategyName;
@@ -949,6 +958,9 @@ async function handleSwitchStrategy() {
         alert(`Error switching strategy: ${error.message}`);
         switchBtn.textContent = '🔄 Switch';
         switchBtn.disabled = false;
+    } finally {
+        // Always reset the flag to allow future switch attempts
+        _switchingStrategy = false;
     }
 }
 
