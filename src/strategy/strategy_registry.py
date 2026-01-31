@@ -1,6 +1,7 @@
 """Strategy Registry - Central registry for all trading strategies"""
 
-from typing import Dict, Type, List, Optional, Callable
+import threading
+from typing import Dict, Type, List, Callable
 from loguru import logger
 
 from .base_strategy import BaseStrategy
@@ -15,11 +16,14 @@ class StrategyRegistry:
     - Strategy lookup by name
     - List of all available strategies
     - Strategy metadata (display name, description, default params)
+    
+    Thread-safe: Uses locks for all registry access to prevent race conditions.
     """
     
     _strategies: Dict[str, Type[BaseStrategy]] = {}
     _metadata: Dict[str, Dict] = {}
     _stock_pickers: Dict[str, str] = {}  # strategy_name -> picker_name
+    _lock = threading.Lock()
     
     @classmethod
     def register(
@@ -54,13 +58,14 @@ class StrategyRegistry:
             Decorator function
         """
         def decorator(strategy_class: Type[BaseStrategy]) -> Type[BaseStrategy]:
-            cls._strategies[name] = strategy_class
-            cls._metadata[name] = {
-                "display_name": display_name or name.replace("_", " ").title(),
-                "description": description,
-                "default_params": default_params or {}
-            }
-            cls._stock_pickers[name] = stock_picker
+            with cls._lock:
+                cls._strategies[name] = strategy_class
+                cls._metadata[name] = {
+                    "display_name": display_name or name.replace("_", " ").title(),
+                    "description": description,
+                    "default_params": default_params or {}
+                }
+                cls._stock_pickers[name] = stock_picker
             logger.debug(f"📝 Registered strategy: {name} ({display_name})")
             return strategy_class
         
@@ -87,13 +92,14 @@ class StrategyRegistry:
             stock_picker: Stock picker name
             default_params: Default parameters
         """
-        cls._strategies[name] = strategy_class
-        cls._metadata[name] = {
-            "display_name": display_name or name.replace("_", " ").title(),
-            "description": description,
-            "default_params": default_params or {}
-        }
-        cls._stock_pickers[name] = stock_picker
+        with cls._lock:
+            cls._strategies[name] = strategy_class
+            cls._metadata[name] = {
+                "display_name": display_name or name.replace("_", " ").title(),
+                "description": description,
+                "default_params": default_params or {}
+            }
+            cls._stock_pickers[name] = stock_picker
         logger.info(f"📝 Registered strategy: {name}")
     
     @classmethod
@@ -110,13 +116,14 @@ class StrategyRegistry:
         Raises:
             ValueError: If strategy not found
         """
-        if name not in cls._strategies:
-            available = ", ".join(cls._strategies.keys())
-            raise ValueError(
-                f"Unknown strategy: '{name}'. Available: {available}"
-            )
+        with cls._lock:
+            if name not in cls._strategies:
+                available = ", ".join(cls._strategies.keys())
+                raise ValueError(
+                    f"Unknown strategy: '{name}'. Available: {available}"
+                )
+            strategy_class = cls._strategies[name]
         
-        strategy_class = cls._strategies[name]
         return strategy_class()
     
     @classmethod
@@ -130,9 +137,10 @@ class StrategyRegistry:
         Returns:
             Strategy class
         """
-        if name not in cls._strategies:
-            raise ValueError(f"Unknown strategy: '{name}'")
-        return cls._strategies[name]
+        with cls._lock:
+            if name not in cls._strategies:
+                raise ValueError(f"Unknown strategy: '{name}'")
+            return cls._strategies[name]
     
     @classmethod
     def list_strategies(cls) -> List[str]:
@@ -142,7 +150,8 @@ class StrategyRegistry:
         Returns:
             List of strategy identifiers
         """
-        return list(cls._strategies.keys())
+        with cls._lock:
+            return list(cls._strategies.keys())
     
     @classmethod
     def get_metadata(cls, name: str) -> Dict:
@@ -155,7 +164,8 @@ class StrategyRegistry:
         Returns:
             Dict with display_name, description, default_params
         """
-        return cls._metadata.get(name, {})
+        with cls._lock:
+            return cls._metadata.get(name, {}).copy()
     
     @classmethod
     def get_stock_picker(cls, name: str) -> str:
@@ -168,7 +178,8 @@ class StrategyRegistry:
         Returns:
             Stock picker name
         """
-        return cls._stock_pickers.get(name, "default")
+        with cls._lock:
+            return cls._stock_pickers.get(name, "default")
     
     @classmethod
     def get_all_strategies_info(cls) -> List[Dict]:
@@ -178,17 +189,18 @@ class StrategyRegistry:
         Returns:
             List of dicts with name, display_name, description
         """
-        result = []
-        for name in cls._strategies:
-            meta = cls._metadata.get(name, {})
-            result.append({
-                "name": name,
-                "display_name": meta.get("display_name", name),
-                "description": meta.get("description", ""),
-                "stock_picker": cls._stock_pickers.get(name, "default"),
-                "default_params": meta.get("default_params", {})
-            })
-        return result
+        with cls._lock:
+            result = []
+            for name in cls._strategies:
+                meta = cls._metadata.get(name, {})
+                result.append({
+                    "name": name,
+                    "display_name": meta.get("display_name", name),
+                    "description": meta.get("description", ""),
+                    "stock_picker": cls._stock_pickers.get(name, "default"),
+                    "default_params": meta.get("default_params", {})
+                })
+            return result
     
     @classmethod
     def is_registered(cls, name: str) -> bool:
@@ -201,11 +213,13 @@ class StrategyRegistry:
         Returns:
             True if registered
         """
-        return name in cls._strategies
+        with cls._lock:
+            return name in cls._strategies
     
     @classmethod
     def clear(cls) -> None:
         """Clear all registered strategies. Useful for testing."""
-        cls._strategies.clear()
-        cls._metadata.clear()
-        cls._stock_pickers.clear()
+        with cls._lock:
+            cls._strategies.clear()
+            cls._metadata.clear()
+            cls._stock_pickers.clear()
