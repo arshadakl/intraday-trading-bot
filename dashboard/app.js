@@ -217,6 +217,18 @@ function updateStartupMode(startupMode, currentMode) {
     const mode = currentMode || startupMode;
     
     switch (mode) {
+        case 'STOPPED':
+            badge.className += ' startup-mode-non';
+            badge.textContent = '⏹️ STOPPED';
+            break;
+        case 'INITIALIZING':
+            badge.className += ' startup-mode-pre';
+            badge.textContent = '⏳ INITIALIZING';
+            break;
+        case 'PAUSED':
+            badge.className += ' startup-mode-pre';
+            badge.textContent = '⏸️ PAUSED';
+            break;
         case 'TRADING':
             badge.className += ' startup-mode-market';
             badge.textContent = '📈 TRADING';
@@ -227,11 +239,15 @@ function updateStartupMode(startupMode, currentMode) {
             break;
         case 'WAITING_FOR_ANALYSIS':
             badge.className += ' startup-mode-pre';
-            badge.textContent = '⏳ WAITING';
+            badge.textContent = '⏳ ANALYZING';
             break;
         case 'PRE_MARKET':
             badge.className += ' startup-mode-pre';
             badge.textContent = '🌅 PRE-MARKET';
+            break;
+        case 'PRE_MARKET_READY':
+            badge.className += ' startup-mode-pre';
+            badge.textContent = '🌅 PRE-MARKET READY';
             break;
         case 'MARKET_HOURS':
             badge.className += ' startup-mode-market';
@@ -271,6 +287,15 @@ function updateMarketAnalysis(data) {
         let modeText = 'Waiting...';
         // Prefer current_mode for real-time accuracy
         switch (currentMode) {
+            case 'STOPPED':
+                modeText = '⏹️ Bot Stopped';
+                break;
+            case 'INITIALIZING':
+                modeText = '⏳ Initializing...';
+                break;
+            case 'PAUSED':
+                modeText = '⏸️ Paused';
+                break;
             case 'TRADING':
                 modeText = '📈 Trading Active';
                 break;
@@ -279,6 +304,12 @@ function updateMarketAnalysis(data) {
                 break;
             case 'WAITING_FOR_ANALYSIS':
                 modeText = '⏳ Waiting for Analysis';
+                break;
+            case 'PRE_MARKET':
+                modeText = '🌅 Pre-Market (Analyzing...)';
+                break;
+            case 'PRE_MARKET_READY':
+                modeText = '🌅 Pre-Market (Stocks Ready)';
                 break;
             case 'MONITORING_ONLY':
                 modeText = '👁️ Monitoring Only (No New Trades)';
