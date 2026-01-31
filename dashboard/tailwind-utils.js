@@ -259,11 +259,14 @@ function updateTabState(activeBtn, allBtns) {
  * Creates a loading spinner
  */
 function createLoadingSpinner() {
-    return `
-        <div class="flex items-center justify-center py-4">
-            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-accent"></div>
-        </div>
-    `;
+    const container = document.createElement('div');
+    container.className = 'flex items-center justify-center py-4';
+    
+    const spinner = document.createElement('div');
+    spinner.className = 'animate-spin rounded-full h-6 w-6 border-b-2 border-accent';
+    
+    container.appendChild(spinner);
+    return container;
 }
 
 /**
