@@ -365,45 +365,47 @@
             <span class="btn-icon">🔄</span>
             <span class="btn-text">REFRESH</span>
         </button>
-        <!-- Include JavaScript -->
-        <script src="tailwind-utils.js?v=20260131"></script>
-        <script src="app.js?v=20260131"></script>
-        <script src="button-states.js?v=20260131"></script>
+    </footer>
 
-        <script>
-            // Tab switching functionality
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const targetTab = btn.getAttribute('data-tab');
-                    const allBtns = document.querySelectorAll('.tab-btn');
+    <!-- Include JavaScript -->
+    <script src="tailwind-utils.js?v=20260131"></script>
+    <script src="app.js?v=20260131"></script>
+    <script src="button-states.js?v=20260131"></script>
 
-                    // Update button states using Tailwind utilities
-                    if (window.TailwindUtils) {
-                        TailwindUtils.updateTabState(btn, allBtns);
-                    } else {
-                        // Fallback if utils not loaded
-                        allBtns.forEach(b => {
-                            b.classList.remove('btn-primary');
-                            b.classList.add('btn-secondary');
-                        });
-                        btn.classList.remove('btn-secondary');
-                        btn.classList.add('btn-primary');
-                    }
+    <script>
+        // Tab switching functionality
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const targetTab = btn.getAttribute('data-tab');
+                const allBtns = document.querySelectorAll('.tab-btn');
 
-                    // Show/hide tab content
-                    document.querySelectorAll('.tab-content').forEach(content => {
-                        content.classList.add('hidden');
+                // Update button states using Tailwind utilities
+                if (window.TailwindUtils) {
+                    TailwindUtils.updateTabState(btn, allBtns);
+                } else {
+                    // Fallback if utils not loaded
+                    allBtns.forEach(b => {
+                        b.classList.remove('btn-primary');
+                        b.classList.add('btn-secondary');
                     });
-                    document.getElementById(`tab-${targetTab}`).classList.remove('hidden');
-                });
-            });
+                    btn.classList.remove('btn-secondary');
+                    btn.classList.add('btn-primary');
+                }
 
-            // Logout function
-            function logout() {
-                localStorage.removeItem('auth_token');
-                window.location.href = '/login';
-            }
-        </script>
+                // Show/hide tab content
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.add('hidden');
+                });
+                document.getElementById(`tab-${targetTab}`).classList.remove('hidden');
+            });
+        });
+
+        // Logout function
+        function logout() {
+            localStorage.removeItem('auth_token');
+            window.location.href = '/login';
+        }
+    </script>
 </body>
 
 </html>
