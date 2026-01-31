@@ -1118,6 +1118,20 @@ class TradingBot:
             elif position_count > 0 and force:
                 logger.warning(f"⚠️ Force-switching strategy with {position_count} open positions!")
         
+        # Check for pending orders
+        with self._pending_lock:
+            pending_count = len(self.pending_orders)
+        
+        if pending_count > 0 and not force:
+            result["message"] = (
+                f"Cannot switch strategy with {pending_count} pending order(s). "
+                "Wait for orders to complete/cancel or use force=True (dangerous!)"
+            )
+            logger.warning(f"⚠️ {result['message']}")
+            return result
+        elif pending_count > 0 and force:
+            logger.warning(f"⚠️ Force-switching strategy with {pending_count} pending orders!")
+        
         # Perform the switch
         try:
             old_strategy = self.current_strategy_name
