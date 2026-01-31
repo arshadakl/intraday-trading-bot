@@ -1235,6 +1235,10 @@ class TradingBot:
         """
         Update parameters for a strategy.
         
+        WARNING: If updating the active strategy, a new instance is created
+        which will lose any runtime state (e.g., OHL signals, trades_today).
+        Consider only updating params when no trades are in progress.
+        
         Args:
             strategy_name: Strategy to update
             params: New parameter values (will be merged with existing)
