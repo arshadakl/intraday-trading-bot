@@ -878,8 +878,8 @@ function updateStrategySwitchButton(canSwitch, selected, active) {
     const switchBtn = document.getElementById('btn-switch-strategy');
     const warning = document.getElementById('strategy-warning');
     
-    // Store globally for event handler
-    window._canSwitchStrategy = canSwitch;
+    // Note: canSwitch state is checked fresh from API before switching
+    // to avoid stale state issues between status polls
     
     if (!canSwitch) {
         switchBtn.disabled = true;
@@ -895,13 +895,27 @@ async function handleSwitchStrategy() {
     const strategyName = select.value;
     const strategyDisplayName = select.options[select.selectedIndex]?.textContent || strategyName;
     
-    if (!confirm(`Switch to "${strategyDisplayName}" strategy?`)) {
-        return;
-    }
-    
     const switchBtn = document.getElementById('btn-switch-strategy');
     switchBtn.disabled = true;
-    switchBtn.textContent = '⏳ Switching...';
+    switchBtn.textContent = '⏳ Checking...';
+    
+    try {
+        // Fetch fresh status to check if switching is allowed (avoid stale state)
+        const freshStatus = await getStrategies();
+        if (freshStatus.success && freshStatus.data && !freshStatus.data.can_switch) {
+            alert('Cannot switch strategy while positions are open. Please close all positions first.');
+            switchBtn.textContent = '🔄 Switch';
+            switchBtn.disabled = false;
+            return;
+        }
+        
+        if (!confirm(`Switch to "${strategyDisplayName}" strategy?`)) {
+            switchBtn.textContent = '🔄 Switch';
+            switchBtn.disabled = false;
+            return;
+        }
+        
+        switchBtn.textContent = '⏳ Switching...';
     
     try {
         const result = await switchStrategy(strategyName);
