@@ -968,7 +968,6 @@ function updateStrategyFromStatus(strategyInfo) {
     if (!strategyInfo) return;
     
     const nameEl = document.getElementById('active-strategy-name');
-    const descEl = document.getElementById('strategy-description');
     const select = document.getElementById('strategy-select');
     
     if (nameEl && strategyInfo.display_name) {
