@@ -636,22 +636,31 @@ async function refreshAllData() {
 async function refreshLogFile() {
     const select = document.getElementById('log-lines-select');
     const lines = select ? select.value : 200;
+    const pre = document.getElementById('log-file-content');
+    if (!pre) return;
+    
     const result = await getLogFile(lines);
     if (result.success && result.data) {
-        const pre = document.getElementById('log-file-content');
-        if (!pre) return;
         const logLines = result.data.lines || [];
-        pre.textContent = logLines.join('\n');
-        // Scroll to bottom
-        pre.scrollTop = pre.scrollHeight;
+        if (logLines.length === 0) {
+            pre.textContent = 'No log entries found.';
+        } else {
+            pre.textContent = logLines.join('\n');
+            // Scroll to bottom
+            pre.scrollTop = pre.scrollHeight;
+        }
+    } else {
+        // Show error message
+        pre.textContent = `Error loading logs: ${result.error || 'Bot may not be running. Start the bot to view logs.'}`;
     }
 }
 
 async function refreshReportsList() {
+    const container = document.getElementById('reports-list');
+    if (!container) return;
+    
     const result = await getReports();
     if (result.success && result.data) {
-        const container = document.getElementById('reports-list');
-        if (!container) return;
         const reports = result.data.reports || [];
         
         if (reports.length === 0) {
@@ -668,6 +677,9 @@ async function refreshReportsList() {
                 <div class="report-item-stats">Trades: ${report.trades}</div>
             </div>
         `).join('');
+    } else {
+        // Show error message
+        container.innerHTML = `<p class="no-data error">Error loading reports: ${result.error || 'Bot may not be running.'}</p>`;
     }
 }
 
@@ -957,7 +969,6 @@ async function handleSwitchStrategy() {
         
         switchBtn.textContent = '⏳ Switching...';
     
-    try {
         const result = await switchStrategy(strategyName);
         
         if (result.success) {
