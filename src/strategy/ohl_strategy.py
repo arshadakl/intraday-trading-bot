@@ -95,13 +95,14 @@ class OHLStrategy(BaseStrategy):
         self.trades_today = 0
         logger.info("🔄 OHL Strategy daily state reset")
     
-    def _detect_ohl_signal(self, stock: Dict, _current_price: float = 0) -> Optional[str]:
+    def _detect_ohl_signal(self, stock: Dict, _current_price: float) -> Optional[str]:
         """
         Detect if stock has O=H or O=L pattern.
         
         Args:
             stock: Stock data with OHLC
-            _current_price: Current LTP (not used, kept for interface consistency)
+            _current_price: Current LTP (intentionally unused; kept for interface 
+                          compatibility with other strategy signal detection methods)
             
         Returns:
             'BULLISH' (O=L), 'BEARISH' (O=H), or None
