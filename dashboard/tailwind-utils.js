@@ -229,13 +229,15 @@ function createTableRow(cells, isHeader = false) {
  * Creates an empty table row
  */
 function createEmptyTableRow(colspan, message) {
-    return `
-        <tr>
-            <td colspan="${colspan}" class="text-center py-8 text-text-muted">
-                ${message}
-            </td>
-        </tr>
-    `;
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    
+    cell.setAttribute('colspan', String(colspan));
+    cell.className = 'text-center py-8 text-text-muted';
+    cell.textContent = String(message);
+    
+    row.appendChild(cell);
+    return row;
 }
 
 /**
@@ -279,7 +281,11 @@ function createBadge(text, type = 'default') {
     const classes = typeClasses[type] || typeClasses.default;
     const borderClass = type !== 'default' ? 'border' : '';
     
-    return `<span class="badge ${classes} ${borderClass}">${text}</span>`;
+    const badge = document.createElement('span');
+    badge.className = `badge ${classes} ${borderClass}`.trim();
+    badge.textContent = String(text);
+    
+    return badge;
 }
 
 // ==================== Export functions for use in other files ====================
