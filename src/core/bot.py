@@ -1123,17 +1123,34 @@ class TradingBot:
             old_strategy = self.current_strategy_name
             old_meta = StrategyRegistry.get_metadata(old_strategy)
             
-            # Get new strategy instance
+            # Get new strategy instance (do not update current_strategy_name yet)
             self.strategy = StrategyRegistry.get_strategy(strategy_name)
-            self.current_strategy_name = strategy_name
             new_meta = StrategyRegistry.get_metadata(strategy_name)
             
             # Reset daily state on new strategy
             if hasattr(self.strategy, 'reset_daily'):
                 self.strategy.reset_daily()
             
-            # Update config
-            self.config.set('active_strategy', strategy_name)
+            # Update config before committing in-memory strategy name
+            try:
+                self.config.set('active_strategy', strategy_name)
+            except Exception as config_error:
+                # Attempt to roll back in-memory strategy to previous one
+                logger.error(
+                    f"❌ Failed to update active_strategy in config while switching from "
+                    f"{old_strategy} to {strategy_name}: {config_error}"
+                )
+                try:
+                    # Best-effort rollback to previous strategy
+                    self.strategy = StrategyRegistry.get_strategy(old_strategy)
+                except Exception as rollback_error:
+                    logger.error(
+                        f"❌ Failed to roll back to previous strategy {old_strategy}: {rollback_error}"
+                    )
+                raise config_error
+            
+            # At this point config is consistent; commit the in-memory strategy name
+            self.current_strategy_name = strategy_name
             
             # Log the switch
             logger.success(
