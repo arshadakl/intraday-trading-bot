@@ -133,8 +133,13 @@ def main():
             logger.info("="*60)
             logger.info(f"Status: {bot.get_current_mode()}")
             logger.info(f"Mode: {bot.startup_mode}")
-            if bot.selected_stocks:
-                logger.info(f"Stocks: {len(bot.selected_stocks)} stocks ready")
+            # Safely check stocks count
+            stocks = getattr(bot, "selected_stocks", None)
+            try:
+                stock_count = len(stocks) if stocks is not None else 0
+            except TypeError:
+                stock_count = 0
+            logger.info(f"Stocks: {stock_count} stocks ready")
             logger.info("="*60)
             logger.info("")
             
