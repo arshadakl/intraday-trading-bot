@@ -145,11 +145,11 @@ function updateButtonState(element, enabled) {
  * Shows success message with Tailwind styling
  */
 function showSuccessMessage(container, message, autoHide = true) {
-    container.innerHTML = `
-        <div class="message-success animate-slide-up">
-            ${message}
-        </div>
-    `;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'message-success animate-slide-up';
+    wrapper.textContent = String(message);
+    container.innerHTML = '';
+    container.appendChild(wrapper);
     
     if (autoHide) {
         setTimeout(() => {
@@ -162,33 +162,33 @@ function showSuccessMessage(container, message, autoHide = true) {
  * Shows error message with Tailwind styling
  */
 function showErrorMessage(container, message) {
-    container.innerHTML = `
-        <div class="message-error animate-slide-up">
-            ${message}
-        </div>
-    `;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'message-error animate-slide-up';
+    wrapper.textContent = String(message);
+    container.innerHTML = '';
+    container.appendChild(wrapper);
 }
 
 /**
  * Shows warning message with Tailwind styling
  */
 function showWarningMessage(container, message) {
-    container.innerHTML = `
-        <div class="message-warning animate-slide-up">
-            ${message}
-        </div>
-    `;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'message-warning animate-slide-up';
+    wrapper.textContent = String(message);
+    container.innerHTML = '';
+    container.appendChild(wrapper);
 }
 
 /**
  * Shows info message with Tailwind styling
  */
 function showInfoMessage(container, message) {
-    container.innerHTML = `
-        <div class="message-info animate-slide-up">
-            ${message}
-        </div>
-    `;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'message-info animate-slide-up';
+    wrapper.textContent = String(message);
+    container.innerHTML = '';
+    container.appendChild(wrapper);
 }
 
 /**
