@@ -172,6 +172,12 @@ class TechnicalIndicators:
             Series of ATR values
         """
         try:
+            # Need at least period+1 data points for ATR calculation
+            if len(high) < period + 1:
+                # Return simple range-based estimate for insufficient data
+                tr = high - low
+                return tr.rolling(window=min(len(tr), period), min_periods=1).mean()
+            
             atr_indicator = AverageTrueRange(
                 high=high,
                 low=low,
@@ -186,7 +192,7 @@ class TechnicalIndicators:
             tr2 = abs(high - close.shift())
             tr3 = abs(low - close.shift())
             tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-            return tr.rolling(window=period).mean()
+            return tr.rolling(window=min(len(tr), period), min_periods=1).mean()
     
     @staticmethod
     def calculate_volume_ratio(
@@ -261,8 +267,9 @@ class TechnicalIndicators:
             # Price vs VWAP (for signals)
             result['price_above_vwap'] = result['close'] > result['vwap']
             
-            # Fill NaN values
+            # Fill NaN values (use infer_objects to avoid FutureWarning)
             result = result.bfill().ffill()
+            result = result.infer_objects(copy=False)
             
             return result
             
@@ -573,11 +580,19 @@ class LiveIndicatorManager:
         # 4. Indicators Calculation
         try:
             history = self.histories[symbol]
-            live_df = pd.concat([history, pd.DataFrame([{
+            
+            # Create new candle DataFrame
+            new_candle = pd.DataFrame([{
                 'open': current['open'], 'high': current['high'],
                 'low': current['low'], 'close': current['close'],
                 'volume': current['volume']
-            }], index=[current['timestamp']])])
+            }], index=[current['timestamp']])
+            
+            # Concat avoiding empty DataFrame issues
+            if history.empty:
+                live_df = new_candle
+            else:
+                live_df = pd.concat([history, new_candle])
             
             calculated = TechnicalIndicators.calculate_all_indicators(live_df)
             latest = get_latest_indicators(calculated)

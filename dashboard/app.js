@@ -217,6 +217,18 @@ function updateStartupMode(startupMode, currentMode) {
     const mode = currentMode || startupMode;
     
     switch (mode) {
+        case 'STOPPED':
+            badge.className += ' startup-mode-non';
+            badge.textContent = '⏹️ STOPPED';
+            break;
+        case 'INITIALIZING':
+            badge.className += ' startup-mode-pre';
+            badge.textContent = '⏳ INITIALIZING';
+            break;
+        case 'PAUSED':
+            badge.className += ' startup-mode-pre';
+            badge.textContent = '⏸️ PAUSED';
+            break;
         case 'TRADING':
             badge.className += ' startup-mode-market';
             badge.textContent = '📈 TRADING';
@@ -227,11 +239,15 @@ function updateStartupMode(startupMode, currentMode) {
             break;
         case 'WAITING_FOR_ANALYSIS':
             badge.className += ' startup-mode-pre';
-            badge.textContent = '⏳ WAITING';
+            badge.textContent = '⏳ ANALYZING';
             break;
         case 'PRE_MARKET':
             badge.className += ' startup-mode-pre';
             badge.textContent = '🌅 PRE-MARKET';
+            break;
+        case 'PRE_MARKET_READY':
+            badge.className += ' startup-mode-pre';
+            badge.textContent = '🌅 PRE-MARKET READY';
             break;
         case 'MARKET_HOURS':
             badge.className += ' startup-mode-market';
@@ -271,6 +287,15 @@ function updateMarketAnalysis(data) {
         let modeText = 'Waiting...';
         // Prefer current_mode for real-time accuracy
         switch (currentMode) {
+            case 'STOPPED':
+                modeText = '⏹️ Bot Stopped';
+                break;
+            case 'INITIALIZING':
+                modeText = '⏳ Initializing...';
+                break;
+            case 'PAUSED':
+                modeText = '⏸️ Paused';
+                break;
             case 'TRADING':
                 modeText = '📈 Trading Active';
                 break;
@@ -279,6 +304,12 @@ function updateMarketAnalysis(data) {
                 break;
             case 'WAITING_FOR_ANALYSIS':
                 modeText = '⏳ Waiting for Analysis';
+                break;
+            case 'PRE_MARKET':
+                modeText = '🌅 Pre-Market (Analyzing...)';
+                break;
+            case 'PRE_MARKET_READY':
+                modeText = '🌅 Pre-Market (Stocks Ready)';
                 break;
             case 'MONITORING_ONLY':
                 modeText = '👁️ Monitoring Only (No New Trades)';
@@ -605,22 +636,31 @@ async function refreshAllData() {
 async function refreshLogFile() {
     const select = document.getElementById('log-lines-select');
     const lines = select ? select.value : 200;
+    const pre = document.getElementById('log-file-content');
+    if (!pre) return;
+    
     const result = await getLogFile(lines);
     if (result.success && result.data) {
-        const pre = document.getElementById('log-file-content');
-        if (!pre) return;
         const logLines = result.data.lines || [];
-        pre.textContent = logLines.join('\n');
-        // Scroll to bottom
-        pre.scrollTop = pre.scrollHeight;
+        if (logLines.length === 0) {
+            pre.textContent = 'No log entries found.';
+        } else {
+            pre.textContent = logLines.join('\n');
+            // Scroll to bottom
+            pre.scrollTop = pre.scrollHeight;
+        }
+    } else {
+        // Show error message
+        pre.textContent = `Error loading logs: ${result.error || 'Bot may not be running. Start the bot to view logs.'}`;
     }
 }
 
 async function refreshReportsList() {
+    const container = document.getElementById('reports-list');
+    if (!container) return;
+    
     const result = await getReports();
     if (result.success && result.data) {
-        const container = document.getElementById('reports-list');
-        if (!container) return;
         const reports = result.data.reports || [];
         
         if (reports.length === 0) {
@@ -637,6 +677,9 @@ async function refreshReportsList() {
                 <div class="report-item-stats">Trades: ${report.trades}</div>
             </div>
         `).join('');
+    } else {
+        // Show error message
+        container.innerHTML = `<p class="no-data error">Error loading reports: ${result.error || 'Bot may not be running.'}</p>`;
     }
 }
 
@@ -926,7 +969,6 @@ async function handleSwitchStrategy() {
         
         switchBtn.textContent = '⏳ Switching...';
     
-    try {
         const result = await switchStrategy(strategyName);
         
         if (result.success) {

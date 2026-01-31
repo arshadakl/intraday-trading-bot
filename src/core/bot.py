@@ -123,14 +123,24 @@ class TradingBot:
         This is different from startup_mode which is set once at startup.
         
         Returns:
-            str: TRADING, READY_TO_TRADE, WAITING_FOR_ANALYSIS, MONITORING_ONLY, MARKET_CLOSING, ANALYSIS_COMPLETE, or NON_MARKET
+            str: STOPPED, INITIALIZING, TRADING, READY_TO_TRADE, WAITING_FOR_ANALYSIS, 
+                 MONITORING_ONLY, MARKET_CLOSING, ANALYSIS_COMPLETE, or NON_MARKET
         """
+        # First check if bot is actually running
+        if self.status == "STOPPED":
+            return "STOPPED"
+        if self.status == "INITIALIZING":
+            return "INITIALIZING"
+        if self.status == "PAUSED":
+            return "PAUSED"
+        
         now = now_ist_time()
         timing = self.config.get("timing", {})
         
         market_open = datetime.strptime(timing.get("trading_start", "09:15"), "%H:%M").time()
         no_new_trades = datetime.strptime(timing.get("no_new_trade_after", "15:00"), "%H:%M").time()
         market_close = datetime.strptime(timing.get("market_close", "15:30"), "%H:%M").time()
+        pre_market_start = datetime.strptime(timing.get("pre_market_start", "08:30"), "%H:%M").time()
         
         # Check if WebSocket is connected and actively monitoring
         is_monitoring = self.websocket is not None and hasattr(self.websocket, 'is_connected') and self.websocket.is_connected
@@ -138,8 +148,15 @@ class TradingBot:
         # Check if we have positions
         has_positions = self.position_tracker and len(self.position_tracker.get_all_positions()) > 0
         
+        # Pre-market hours (before market open)
+        if pre_market_start <= now < market_open:
+            if self.selected_stocks:
+                return "PRE_MARKET_READY"
+            else:
+                return "PRE_MARKET"
+        
         # Within trading hours
-        if market_open <= now <= no_new_trades:
+        elif market_open <= now <= no_new_trades:
             if is_monitoring or has_positions:
                 return "TRADING"
             elif self.selected_stocks:
