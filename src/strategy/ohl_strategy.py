@@ -82,13 +82,17 @@ class OHLStrategy(BaseStrategy):
         self.trades_today = 0
     
     def reset_daily(self) -> None:
-        """Reset all daily state"""
+        """Reset all daily state.
+        
+        Note: NiftyIndexTracker is NOT reset here because it's a singleton
+        shared across strategies. It should only be reset in bot.py's global
+        daily reset to avoid wiping valid data when switching strategies mid-day.
+        """
         self.ohl_signals.clear()
         self.opening_range.clear()
         self.first_10min_range.clear()
         self.ohl_detected_time.clear()
         self.trades_today = 0
-        self.nifty_tracker.reset_daily()
         logger.info("🔄 OHL Strategy daily state reset")
     
     def _detect_ohl_signal(self, stock: Dict, _current_price: float = 0) -> Optional[str]:
