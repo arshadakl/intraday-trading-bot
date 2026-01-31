@@ -418,7 +418,6 @@ class OHLStrategy(BaseStrategy):
         3. Fallback to percentage-based SL
         """
         symbol = stock.get('symbol', 'UNKNOWN')
-        open_price = stock.get('open', 0)
         high_price = stock.get('high', 0)
         low_price = stock.get('low', 0)
         
@@ -465,7 +464,6 @@ class OHLStrategy(BaseStrategy):
             Exit signal dict or None
         """
         symbol = position.get('symbol', 'UNKNOWN')
-        entry_price = position.get('entry_price', 0)
         stop_loss = position.get('stop_loss', 0)
         target = position.get('target', 0)
         direction = position.get('direction', 'LONG')
@@ -546,7 +544,6 @@ class OHLStrategy(BaseStrategy):
         For OHL, this is more dynamic and depends on real-time data,
         but we can provide estimates based on ATR.
         """
-        symbol = stock.get('symbol', 'UNKNOWN')
         price = stock.get('price', stock.get('ltp', stock.get('close', 0)))
         atr = stock.get('atr', price * 0.015)  # Default 1.5% if no ATR
         
