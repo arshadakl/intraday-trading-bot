@@ -209,6 +209,8 @@ class TradingBot:
             # Import strategies here to trigger registration (avoids circular imports)
             from src.strategy.vwap_rsi_strategy import VWAPRSIStrategy  # noqa: F401
             from src.strategy.ohl_strategy import OHLStrategy  # noqa: F401
+            # Import stock pickers to trigger registration
+            from src.analysis.stock_pickers.ohl_picker import OHLStockPicker  # noqa: F401
             
             active_strategy_name = self.config.get('active_strategy', 'vwap_rsi')
             if not StrategyRegistry.is_registered(active_strategy_name):
