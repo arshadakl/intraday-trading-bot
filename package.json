@@ -3,9 +3,8 @@
     "version": "1.0.0",
     "description": "Trading bot dashboard with Tailwind CSS",
     "scripts": {
-        "build-css": "tailwindcss -i ./src/input.css -o ./dashboard/styles.css --watch",
-        "build": "tailwindcss -i ./src/input.css -o ./dashboard/styles.css",
-        "dev": "tailwindcss -i ./src/input.css -o ./dashboard/styles.css --watch"
+        "dev:css": "tailwindcss -i ./src/input.css -o ./dashboard/styles.css --watch",
+        "build": "tailwindcss -i ./src/input.css -o ./dashboard/styles.css"
     },
     "devDependencies": {
         "tailwindcss": "^3.4.19"
