@@ -129,9 +129,12 @@ class BaseStockPicker(ABC):
         top_stocks = scored[:n]
         
         if top_stocks:
+            stock_list = [
+                '{} ({:.1f})'.format(s['symbol'], s.get('picker_score', 0))
+                for s in top_stocks
+            ]
             logger.info(
-                f"{self.name}: Selected top {len(top_stocks)} stocks: "
-                f"{[s['symbol'] + f' ({s.get(\"picker_score\", 0):.1f})' for s in top_stocks]}"
+                f"{self.name}: Selected top {len(top_stocks)} stocks: {stock_list}"
             )
         
         return top_stocks
