@@ -139,10 +139,34 @@ class OHLStrategy(BaseStrategy):
         return None
     
     def _is_valid_entry_window(self) -> bool:
-        """Check if current time is within entry window (9:30-9:45)"""
+        """Check if current time is within entry window (e.g. 9:30-9:45).
+        
+        Note:
+            This uses only `time` objects (no date context). Windows that span
+            midnight (e.g. "23:50"-"00:10") are not supported.
+        
+        Returns:
+            True if current time is within entry window, False otherwise
+        """
         now = now_ist_time()
-        start = datetime.strptime(self.entry_window_start, "%H:%M").time()
-        end = datetime.strptime(self.entry_window_end, "%H:%M").time()
+        try:
+            start = datetime.strptime(self.entry_window_start, "%H:%M").time()
+            end = datetime.strptime(self.entry_window_end, "%H:%M").time()
+        except (TypeError, ValueError) as e:
+            logger.error(
+                f"Invalid entry window configuration: "
+                f"start={self.entry_window_start!r}, end={self.entry_window_end!r}: {e}"
+            )
+            return False
+        
+        # Reject windows where end is before start (midnight-spanning not supported)
+        if end < start:
+            logger.error(
+                f"Invalid entry window (end before start, midnight-spanning "
+                f"windows not supported): start={start}, end={end}"
+            )
+            return False
+        
         return start <= now <= end
     
     def _check_nifty_alignment(self, signal: str) -> bool:
