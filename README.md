@@ -202,6 +202,80 @@ broker = "zerodha"  # or "angel_one" or "upstox"
    - Avoid overnight risk
 ```
 
+---
+
+## 📊 OHL Strategy (Open=High/Low)
+
+The bot supports an alternative **OHL (Open=High/Low)** strategy that capitalizes on strong opening momentum.
+
+### OHL Stock Picker Filters
+
+```
+OHL Stock Picker Logic:
+│
+├── Filter 1: Price Range (₹100 - ₹5000)
+│   └── Ensures adequate liquidity and manageable position sizes
+│
+├── Filter 2: Gap Detection
+│   ├── Gap Up: Today Open > Yesterday Close (bullish bias)
+│   └── Gap Down: Today Open < Yesterday Close (bearish bias)
+│
+├── Filter 3: Volume Spike (Strict)
+│   └── Pre-market volume > 2x average (confirms interest)
+│
+├── Filter 4: ATR Filter
+│   └── ATR% between 1.5% - 4% (need volatility but not extreme)
+│
+└── Filter 5: Previous Day Trend Clarity
+    └── Prev day range / Prev day close > 1% (trending day)
+```
+
+### OHL Entry Flow
+
+```
+09:15 AM - Market Open
+    │
+    ▼
+09:16 AM - First Check (DO NOT ENTER YET)
+    │   ├── Scan all stocks for O=H or O=L (0.06% buffer)
+    │   ├── Tag stocks: "potential_long" or "potential_short"
+    │   └── Subscribe Nifty token, record Nifty open price
+    │
+    ▼
+09:16-09:30 AM - Range Formation
+    │   ├── Track each tagged stock's high/low
+    │   ├── Track Nifty direction (current vs open)
+    │   └── Discard stocks where OHL condition breaks
+    │
+    ▼
+09:30-09:45 AM - Entry Window
+    │   ├── Nifty Up + O=L stock → Valid BUY candidate
+    │   ├── Nifty Down + O=H stock → Valid SHORT candidate
+    │   ├── Confirm OHL still valid (high not breached for short)
+    │   └── Wait for range breakout trigger
+    │
+    ▼
+Range Break Detected
+    │   ├── Long: Price > 15-min high → BUY
+    │   └── Short: Price < 15-min low → SELL
+    │
+    ▼
+Execute Order
+    ├── Entry: Breakout price
+    ├── SL: Day High (short) or Day Low (long) OR 10-min range
+    └── Target: 1:1.5 to 1:2 Risk-Reward
+```
+
+### OHL vs VWAP Strategy
+
+| Aspect | VWAP+RSI Strategy | OHL Strategy |
+|--------|-------------------|--------------|
+| **Entry Time** | Anytime 9:30 AM - 3:00 PM | 9:30 AM - 9:45 AM only |
+| **Signal Type** | VWAP crossover + momentum | Opening pattern + breakout |
+| **Trades/Day** | 4-8 per stock | 1-2 per stock |
+| **Hold Duration** | Minutes to hours | 30 min to few hours |
+| **Best For** | Trending markets | Gap days with momentum |
+
 ### Position Sizing
 
 ```python
