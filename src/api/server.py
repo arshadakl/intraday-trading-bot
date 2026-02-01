@@ -12,11 +12,75 @@ import pandas as pd
 from src.core.config_manager import get_config
 from flask.json.provider import DefaultJSONProvider
 
+def sanitize_for_json(obj):
+    """
+    Recursively sanitize data for JSON serialization.
+    Converts NaN, Infinity to None, and numpy types to native Python types.
+    """
+    if obj is None:
+        return None
+    
+    # Handle pandas NA/NaN/NaT
+    try:
+        if pd.isna(obj):
+            return None
+    except (TypeError, ValueError):
+        pass
+    
+    # Handle numpy types
+    if isinstance(obj, (np.float64, np.float32, np.float16)):
+        if np.isnan(obj) or np.isinf(obj):
+            return None
+        return float(obj)
+    if isinstance(obj, (np.int64, np.int32, np.int16, np.int8)):
+        return int(obj)
+    if isinstance(obj, (np.uint64, np.uint32, np.uint16, np.uint8)):
+        return int(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, np.ndarray):
+        return [sanitize_for_json(x) for x in obj.tolist()]
+    
+    # Handle Python float NaN/Infinity
+    if isinstance(obj, float):
+        if obj != obj or obj == float('inf') or obj == float('-inf'):  # NaN check: NaN != NaN
+            return None
+        return obj
+    
+    # Handle datetime
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    
+    # Handle pandas Timestamp
+    if isinstance(obj, pd.Timestamp):
+        return obj.isoformat()
+    
+    # Recursively handle dicts
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    
+    # Recursively handle lists/tuples
+    if isinstance(obj, (list, tuple)):
+        return [sanitize_for_json(x) for x in obj]
+    
+    # Return as-is for other types (str, int, bool, etc.)
+    return obj
+
+
 class CustomJSONProvider(DefaultJSONProvider):
-    """Custom JSON provider to handle numpy types which are common in trading and analysis"""
+    """Custom JSON provider to handle numpy types and NaN values for trading/analysis data"""
+    
+    def dumps(self, obj, **kwargs):
+        """Override dumps to sanitize data before serialization"""
+        sanitized = sanitize_for_json(obj)
+        return super().dumps(sanitized, **kwargs)
+    
     def default(self, obj):
+        """Fallback for any types not caught by sanitize_for_json"""
         try:
             if isinstance(obj, (np.float64, np.float32)):
+                if np.isnan(obj) or np.isinf(obj):
+                    return None
                 return float(obj)
             if isinstance(obj, (np.int64, np.int32)):
                 return int(obj)

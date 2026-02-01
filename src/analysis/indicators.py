@@ -267,9 +267,11 @@ class TechnicalIndicators:
             # Price vs VWAP (for signals)
             result['price_above_vwap'] = result['close'] > result['vwap']
             
-            # Fill NaN values (use infer_objects to avoid FutureWarning)
-            result = result.bfill().ffill()
+            # Fill NaN values with proper dtype handling to avoid FutureWarning
+            # Use infer_objects before fill operations to handle object dtypes
             result = result.infer_objects(copy=False)
+            with pd.option_context('future.no_silent_downcasting', True):
+                result = result.bfill().ffill()
             
             return result
             
@@ -423,8 +425,25 @@ def prepare_dataframe(candles: List[Dict]) -> pd.DataFrame:
 
 def to_native(obj):
     """Recursively convert numpy types to native Python types for JSON serialization."""
+    # Check for pandas NA/NaN first (catches various types)
+    try:
+        if pd.isna(obj):
+            return None
+    except (TypeError, ValueError):
+        pass
+    
+    # Handle numpy floats with NaN/Infinity check
     if isinstance(obj, (np.float64, np.float32)):
+        if np.isnan(obj) or np.isinf(obj):
+            return None
         return float(obj)
+    
+    # Handle Python float NaN/Infinity
+    if isinstance(obj, float):
+        if obj != obj or obj == float('inf') or obj == float('-inf'):  # NaN != NaN
+            return None
+        return obj
+    
     if isinstance(obj, (np.int64, np.int32)):
         return int(obj)
     if isinstance(obj, np.bool_):
@@ -433,9 +452,8 @@ def to_native(obj):
         return {k: to_native(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [to_native(x) for x in obj]
-    if pd.isna(obj):
-        return None
     return obj
+
 
 
 def get_latest_indicators(df: pd.DataFrame) -> Dict:
@@ -557,8 +575,9 @@ class LiveIndicatorManager:
             
             new_row = pd.DataFrame([closed_candle], index=[current['timestamp']])
             
-            if self.histories[symbol] is not None:
-                self.histories[symbol] = pd.concat([self.histories[symbol], new_row]).tail(100)
+            # Safely concatenate - check for empty DataFrame to avoid FutureWarning
+            if self.histories[symbol] is not None and not self.histories[symbol].empty:
+                self.histories[symbol] = pd.concat([self.histories[symbol], new_row], ignore_index=False).tail(100)
             else:
                 self.histories[symbol] = new_row
                 
