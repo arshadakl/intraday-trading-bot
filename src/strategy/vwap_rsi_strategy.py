@@ -189,10 +189,13 @@ class VWAPRSIStrategy(BaseStrategy):
             logger.debug(f"{symbol}: Outside trading hours")
             return None
         
-        # Get indicator values
-        rsi = indicators.get('rsi', 50)
-        vwap = indicators.get('vwap', current_price)
-        volume_ratio = indicators.get('volume_ratio', 1)
+        # Get indicator values with null-safe defaults
+        # Note: indicators may contain None values (converted from NaN)
+        rsi = indicators.get('rsi') or 50
+        vwap = indicators.get('vwap') or current_price
+        volume_ratio = indicators.get('volume_ratio')
+        if volume_ratio is None:
+            volume_ratio = 1.0  # Default to average volume if not available
         candle_data = indicators.get('candle_data')  # Professional: wait for candle
         pivots = stock.get('pivots')  # Pivot points from pre-market
         
@@ -325,8 +328,8 @@ class VWAPRSIStrategy(BaseStrategy):
         stop_loss = position.get('stop_loss', entry_price * 0.995)
         target = position.get('target', entry_price * 1.01)
         
-        rsi = indicators.get('rsi', 50)
-        vwap = indicators.get('vwap', current_price)
+        rsi = indicators.get('rsi') or 50
+        vwap = indicators.get('vwap') or current_price
         
         # ============ EXIT CONDITIONS ============
         
