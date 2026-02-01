@@ -1093,7 +1093,7 @@ class TradingBot:
         logger.info(f"📡 WebSocket monitoring started for {len(tokens)} stocks")
         self._log_activity("TRADING", f"Active trading started - Monitoring {len(tokens)} stocks via WebSocket")
     
-    def switch_strategy(self, strategy_name: str, force: bool = False) -> Dict[str, Any]:
+    def switch_strategy(self, strategy_name: str, force: bool = False, repick_stocks: bool = True) -> Dict[str, Any]:
         """
         Switch to a different trading strategy at runtime.
         
@@ -1101,10 +1101,12 @@ class TradingBot:
         - Cannot switch if positions are open (unless force=True)
         - Cannot switch to non-existent strategy
         - Will reset daily state on new strategy
+        - Can optionally re-pick stocks using the new strategy's picker
         
         Args:
             strategy_name: Name of strategy to switch to
             force: If True, allows switching even with open positions (dangerous!)
+            repick_stocks: If True, re-run stock selection with new strategy's picker
             
         Returns:
             Dict with success status and message
@@ -1196,8 +1198,23 @@ class TradingBot:
                 {"old": old_strategy, "new": strategy_name}
             )
             
+            # Re-pick stocks if requested and we have the analyzer
+            stocks_repicked = False
+            if repick_stocks and self.pre_market_analyzer:
+                try:
+                    stocks_repicked = self._repick_stocks_for_strategy(strategy_name)
+                    if stocks_repicked:
+                        result["stocks_repicked"] = True
+                        result["new_stocks"] = [s['symbol'] for s in self.selected_stocks]
+                except Exception as e:
+                    logger.warning(f"⚠️ Stock repicking failed: {e}")
+                    result["stocks_repicked"] = False
+                    result["repick_error"] = str(e)
+            
             result["success"] = True
             result["message"] = f"Successfully switched to {new_meta.get('display_name', strategy_name)}"
+            if stocks_repicked:
+                result["message"] += f" with {len(self.selected_stocks)} newly selected stocks"
             result["new"] = strategy_name
             
             return result
@@ -1206,6 +1223,149 @@ class TradingBot:
             result["message"] = f"Failed to switch strategy: {str(e)}"
             logger.error(f"❌ {result['message']}")
             return result
+    
+    def _repick_stocks_for_strategy(self, strategy_name: str) -> bool:
+        """
+        Re-pick stocks using the specified strategy's stock picker.
+        
+        This is called after switching strategies to ensure the selected stocks
+        are appropriate for the new strategy's criteria.
+        
+        Args:
+            strategy_name: Name of the strategy to pick stocks for
+            
+        Returns:
+            True if stocks were successfully repicked
+        """
+        from src.analysis.base_stock_picker import StockPickerRegistry
+        
+        logger.info("=" * 60)
+        logger.info(f"🔄 RE-PICKING STOCKS FOR {strategy_name.upper()} STRATEGY")
+        logger.info("=" * 60)
+        
+        try:
+            # Get the picker for this strategy
+            picker_name = StrategyRegistry.get_stock_picker(strategy_name)
+            picker = StockPickerRegistry.get_picker(picker_name)
+            
+            logger.info(f"📊 Using stock picker: {picker_name}")
+            
+            # Get fresh stock data using pre-market analyzer
+            logger.info("🔍 Fetching latest stock data...")
+            analyzed_stocks = self.pre_market_analyzer.analyze_all_stocks()
+            
+            if not analyzed_stocks:
+                logger.warning("⚠️ No stocks available for analysis")
+                return False
+            
+            # Use the strategy-specific picker to select stocks
+            max_stocks = self.config.max_stocks
+            selected = picker.select_top_stocks(analyzed_stocks, n=max_stocks)
+            
+            if not selected:
+                logger.warning(f"⚠️ {picker_name} picker found no suitable stocks")
+                return False
+            
+            # Store old stocks for logging
+            old_symbols = [s['symbol'] for s in self.selected_stocks] if self.selected_stocks else []
+            
+            # Update selected stocks
+            self.selected_stocks = selected
+            
+            # Calculate entry points for new stocks
+            for stock in self.selected_stocks:
+                entry_info = self.strategy.calculate_entry_points(stock)
+                stock.update(entry_info)
+            
+            new_symbols = [s['symbol'] for s in self.selected_stocks]
+            
+            logger.info(f"✅ Selected {len(self.selected_stocks)} stocks using {picker_name} picker:")
+            for i, stock in enumerate(self.selected_stocks, 1):
+                score = stock.get('picker_score', stock.get('composite_score', 0))
+                logger.info(f"   {i}. {stock['symbol']} (Score: {score:.1f})")
+            
+            if old_symbols != new_symbols:
+                logger.info(f"📝 Stock change: {old_symbols} → {new_symbols}")
+            
+            self._log_activity(
+                "REPICK",
+                f"Re-picked stocks for {strategy_name} using {picker_name} picker",
+                {"picker": picker_name, "stocks": new_symbols, "previous": old_symbols}
+            )
+            
+            # Update market analysis for dashboard
+            self.market_analysis["stocks"] = [
+                {
+                    "symbol": s['symbol'],
+                    "composite_score": s.get('picker_score', s.get('composite_score', 0)),
+                    "ltp": s.get('ltp', s.get('close', 0)),
+                    "entry_price": s.get('entry_price', 0),
+                    "stop_loss": s.get('stop_loss', 0),
+                    "target_price": s.get('target_price', 0)
+                }
+                for s in self.selected_stocks
+            ]
+            
+            # If WebSocket is connected, update subscriptions
+            if self.websocket and hasattr(self.websocket, 'is_connected') and self.websocket.is_connected:
+                logger.info("🔄 Updating WebSocket subscriptions for new stocks...")
+                self._restart_monitoring_with_new_stocks()
+            
+            logger.info("=" * 60)
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Error repicking stocks: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    def _restart_monitoring_with_new_stocks(self) -> None:
+        """
+        Restart WebSocket monitoring with newly selected stocks.
+        Called after stock repicking if WebSocket was already connected.
+        """
+        if not self.selected_stocks:
+            logger.warning("⚠️ No stocks to monitor")
+            return
+        
+        try:
+            # Disconnect existing WebSocket
+            if self.websocket:
+                logger.info("📡 Disconnecting current WebSocket...")
+                self.websocket.disconnect()
+            
+            # Wait a moment for clean disconnect
+            import time
+            time.sleep(0.5)
+            
+            # Prepare tokens for new stocks
+            tokens = [
+                {
+                    'exchange_type': 1,  # NSE
+                    'token': stock['token'],
+                    'symbol': stock['symbol']
+                }
+                for stock in self.selected_stocks
+            ]
+            
+            # Create new WebSocket connection
+            self.websocket = AngelWebSocket(
+                api_key=self.angel_client.market_api_key,
+                client_id=self.angel_client.client_id,
+                feed_token=self.angel_client.feed_token,
+                auth_token=self.angel_client.auth_token
+            )
+            
+            self.websocket.on_price_update = self._on_price_update
+            self.websocket.subscribe(tokens)
+            self.websocket.connect()
+            
+            logger.success(f"📡 WebSocket reconnected with {len(tokens)} new stocks")
+            self._log_activity("WEBSOCKET", f"Reconnected with {len(tokens)} new stocks after strategy switch")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to restart WebSocket: {e}")
     
     def get_available_strategies(self) -> List[Dict]:
         """

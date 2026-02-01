@@ -403,17 +403,27 @@ def create_app() -> Flask:
             data = request.get_json()
             strategy_name = data.get('strategy')
             force = data.get('force', False)
+            repick_stocks = data.get('repick_stocks', True)  # Default to repick
             
             if not strategy_name:
                 return error_response("Strategy name is required")
             
-            result = bot.switch_strategy(strategy_name, force=force)
+            result = bot.switch_strategy(strategy_name, force=force, repick_stocks=repick_stocks)
             
             if result['success']:
-                return success_response({
+                response_data = {
                     'active': result.get('new', strategy_name),
                     'previous': result.get('previous')
-                }, result['message'])
+                }
+                # Include stock repicking info if available
+                if result.get('stocks_repicked'):
+                    response_data['stocks_repicked'] = True
+                    response_data['new_stocks'] = result.get('new_stocks', [])
+                elif 'repick_error' in result:
+                    response_data['stocks_repicked'] = False
+                    response_data['repick_error'] = result.get('repick_error')
+                    
+                return success_response(response_data, result['message'])
             else:
                 return error_response(result['message'])
             
