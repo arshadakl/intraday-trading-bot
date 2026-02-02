@@ -10,7 +10,7 @@ from loguru import logger
 from .indicators import TechnicalIndicators, prepare_dataframe, get_latest_indicators
 from .stock_scorer import StockScorer
 from .pivot_calculator import PivotPointCalculator
-from src.core.config_manager import get_config
+from src.core.config_manager import get_config  # Direct import to avoid circular
 
 
 class PreMarketAnalyzer:

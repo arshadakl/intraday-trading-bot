@@ -20,7 +20,7 @@ DEFAULT_CONFIG = {
     },
     
     # Active strategy (can be switched at runtime)
-    "active_strategy": "vwap_rsi",
+    "active_strategy": "three_minute",
     
     # Multi-strategy configuration
     "strategies": {
@@ -63,6 +63,26 @@ DEFAULT_CONFIG = {
                 "max_sl_percent": 2.0,
                 "max_trades_per_day": 3
             }
+        },
+        "three_minute": {
+            "enabled": True,
+            "display_name": "3-Minute Strategy (Pre-Open Gap)",
+            "description": "Trade gap-up/gap-down stocks identified from NSE pre-open session with candle breakout confirmation",
+            "stock_picker": "preopen_gap",
+            "params": {
+                "min_gap_percent": 1.0,
+                "max_gap_percent": 8.0,
+                "entry_window_start": "09:20",
+                "entry_window_end": "10:30",
+                "stop_loss_percent": 1.0,
+                "target_percent": 2.0,
+                "risk_reward_ratio": 2.0,
+                "max_sl_percent": 2.0,
+                "require_nifty_alignment": True,
+                "use_opening_range_breakout": True,
+                "opening_range_minutes": 5,
+                "max_trades_per_day": 5
+            }
         }
     },
     
@@ -87,6 +107,7 @@ DEFAULT_CONFIG = {
     
     "timing":  {
         "analysis_start":  "08:30",
+        "preopen_data_ready": "09:10",  # Final pre-open data available after this time
         "trading_start": "09:15",
         "no_new_trade_after": "15:00",
         "square_off_time": "15:15",
