@@ -1,55 +1,285 @@
 {
   "stocks": [
-    {"symbol": "RELIANCE-EQ", "token": "2885", "name": "Reliance Industries"},
-    {"symbol": "TCS-EQ", "token":  "11536", "name": "Tata Consultancy Services"},
-    {"symbol": "HDFCBANK-EQ", "token": "1333", "name": "HDFC Bank"},
-    {"symbol": "INFY-EQ", "token": "1594", "name": "Infosys"},
-    {"symbol": "ICICIBANK-EQ", "token":  "4963", "name": "ICICI Bank"},
-    {"symbol": "HINDUNILVR-EQ", "token": "1394", "name": "Hindustan Unilever"},
-    {"symbol": "SBIN-EQ", "token":  "3045", "name": "State Bank of India"},
-    {"symbol": "BHARTIARTL-EQ", "token": "10604", "name": "Bharti Airtel"},
-    {"symbol": "ITC-EQ", "token":  "1660", "name": "ITC"},
-    {"symbol": "KOTAKBANK-EQ", "token": "1922", "name": "Kotak Mahindra Bank"},
-    {"symbol": "LT-EQ", "token":  "11483", "name": "Larsen & Toubro"},
-    {"symbol": "AXISBANK-EQ", "token": "5900", "name": "Axis Bank"},
-    {"symbol": "ASIANPAINT-EQ", "token": "236", "name": "Asian Paints"},
-    {"symbol": "MARUTI-EQ", "token":  "10999", "name": "Maruti Suzuki"},
-    {"symbol": "SUNPHARMA-EQ", "token": "3351", "name": "Sun Pharma"},
-    {"symbol": "TITAN-EQ", "token": "3506", "name": "Titan Company"},
-    {"symbol": "BAJFINANCE-EQ", "token":  "317", "name": "Bajaj Finance"},
-    {"symbol": "WIPRO-EQ", "token":  "3787", "name": "Wipro"},
-    {"symbol": "ULTRACEMCO-EQ", "token": "11532", "name": "UltraTech Cement"},
-    {"symbol": "HCLTECH-EQ", "token": "7229", "name": "HCL Technologies"},
-    {"symbol": "NTPC-EQ", "token":  "11630", "name": "NTPC"},
-    {"symbol":  "POWERGRID-EQ", "token": "14977", "name": "Power Grid"},
-    {"symbol": "TATAMOTORS-EQ", "token": "3456", "name": "Tata Motors"},
-    {"symbol":  "M&M-EQ", "token": "2031", "name": "Mahindra & Mahindra"},
-    {"symbol": "TATASTEEL-EQ", "token": "3499", "name": "Tata Steel"},
-    {"symbol": "ONGC-EQ", "token": "2475", "name": "ONGC"},
-    {"symbol": "JSWSTEEL-EQ", "token":  "11723", "name": "JSW Steel"},
-    {"symbol": "ADANIENT-EQ", "token":  "25", "name": "Adani Enterprises"},
-    {"symbol":  "ADANIPORTS-EQ", "token": "15083", "name": "Adani Ports"},
-    {"symbol":  "COALINDIA-EQ", "token": "20374", "name": "Coal India"},
-    {"symbol": "BAJAJFINSV-EQ", "token":  "16675", "name": "Bajaj Finserv"},
-    {"symbol": "TECHM-EQ", "token":  "13538", "name": "Tech Mahindra"},
-    {"symbol": "NESTLEIND-EQ", "token": "17963", "name": "Nestle India"},
-    {"symbol":  "INDUSINDBK-EQ", "token": "5258", "name": "IndusInd Bank"},
-    {"symbol": "GRASIM-EQ", "token":  "1232", "name": "Grasim Industries"},
-    {"symbol":  "DIVISLAB-EQ", "token":  "10940", "name": "Divi's Labs"},
-    {"symbol": "BPCL-EQ", "token": "526", "name": "BPCL"},
-    {"symbol": "DRREDDY-EQ", "token": "881", "name": "Dr. Reddy's Labs"},
-    {"symbol": "BRITANNIA-EQ", "token":  "547", "name": "Britannia"},
-    {"symbol": "CIPLA-EQ", "token":  "694", "name": "Cipla"},
-    {"symbol": "EICHERMOT-EQ", "token": "910", "name": "Eicher Motors"},
-    {"symbol": "APOLLOHOSP-EQ", "token": "157", "name": "Apollo Hospitals"},
-    {"symbol": "HEROMOTOCO-EQ", "token": "1348", "name": "Hero MotoCorp"},
-    {"symbol": "SBILIFE-EQ", "token": "21808", "name": "SBI Life Insurance"},
-    {"symbol": "TATACONSUM-EQ", "token":  "3432", "name": "Tata Consumer"},
-    {"symbol": "HINDALCO-EQ", "token": "1363", "name": "Hindalco"},
-    {"symbol": "BAJAJ-AUTO-EQ", "token": "16669", "name": "Bajaj Auto"},
-    {"symbol": "UPL-EQ", "token": "11287", "name": "UPL"},
-    {"symbol":  "HDFCLIFE-EQ", "token": "467", "name": "HDFC Life"},
-    {"symbol": "SHRIRAMFIN-EQ", "token":  "4306", "name": "Shriram Finance"}
+    {
+      "symbol": "RELIANCE-EQ",
+      "token": "2885",
+      "name": "Reliance Industries"
+    },
+    {
+      "symbol": "TCS-EQ",
+      "token": "11536",
+      "name": "Tata Consultancy Services"
+    },
+    {
+      "symbol": "HDFCBANK-EQ",
+      "token": "1333",
+      "name": "HDFC Bank"
+    },
+    {
+      "symbol": "INFY-EQ",
+      "token": "1594",
+      "name": "Infosys"
+    },
+    {
+      "symbol": "ICICIBANK-EQ",
+      "token": "4963",
+      "name": "ICICI Bank"
+    },
+    {
+      "symbol": "HINDUNILVR-EQ",
+      "token": "1394",
+      "name": "Hindustan Unilever"
+    },
+    {
+      "symbol": "SBIN-EQ",
+      "token": "3045",
+      "name": "State Bank of India"
+    },
+    {
+      "symbol": "BHARTIARTL-EQ",
+      "token": "10604",
+      "name": "Bharti Airtel"
+    },
+    {
+      "symbol": "ITC-EQ",
+      "token": "1660",
+      "name": "ITC"
+    },
+    {
+      "symbol": "KOTAKBANK-EQ",
+      "token": "1922",
+      "name": "Kotak Mahindra Bank"
+    },
+    {
+      "symbol": "LT-EQ",
+      "token": "11483",
+      "name": "Larsen & Toubro"
+    },
+    {
+      "symbol": "AXISBANK-EQ",
+      "token": "5900",
+      "name": "Axis Bank"
+    },
+    {
+      "symbol": "ASIANPAINT-EQ",
+      "token": "236",
+      "name": "Asian Paints"
+    },
+    {
+      "symbol": "MARUTI-EQ",
+      "token": "10999",
+      "name": "Maruti Suzuki"
+    },
+    {
+      "symbol": "SUNPHARMA-EQ",
+      "token": "3351",
+      "name": "Sun Pharma"
+    },
+    {
+      "symbol": "TITAN-EQ",
+      "token": "3506",
+      "name": "Titan Company"
+    },
+    {
+      "symbol": "BAJFINANCE-EQ",
+      "token": "317",
+      "name": "Bajaj Finance"
+    },
+    {
+      "symbol": "WIPRO-EQ",
+      "token": "3787",
+      "name": "Wipro"
+    },
+    {
+      "symbol": "ULTRACEMCO-EQ",
+      "token": "11532",
+      "name": "UltraTech Cement"
+    },
+    {
+      "symbol": "HCLTECH-EQ",
+      "token": "7229",
+      "name": "HCL Technologies"
+    },
+    {
+      "symbol": "NTPC-EQ",
+      "token": "11630",
+      "name": "NTPC"
+    },
+    {
+      "symbol": "POWERGRID-EQ",
+      "token": "14977",
+      "name": "Power Grid"
+    },
+    {
+      "symbol": "TATAMOTORS-EQ",
+      "token": "3456",
+      "name": "Tata Motors"
+    },
+    {
+      "symbol": "M&M-EQ",
+      "token": "2031",
+      "name": "Mahindra & Mahindra"
+    },
+    {
+      "symbol": "TATASTEEL-EQ",
+      "token": "3499",
+      "name": "Tata Steel"
+    },
+    {
+      "symbol": "ONGC-EQ",
+      "token": "2475",
+      "name": "ONGC"
+    },
+    {
+      "symbol": "JSWSTEEL-EQ",
+      "token": "11723",
+      "name": "JSW Steel"
+    },
+    {
+      "symbol": "ADANIENT-EQ",
+      "token": "25",
+      "name": "Adani Enterprises"
+    },
+    {
+      "symbol": "ADANIPORTS-EQ",
+      "token": "15083",
+      "name": "Adani Ports"
+    },
+    {
+      "symbol": "COALINDIA-EQ",
+      "token": "20374",
+      "name": "Coal India"
+    },
+    {
+      "symbol": "BAJAJFINSV-EQ",
+      "token": "16675",
+      "name": "Bajaj Finserv"
+    },
+    {
+      "symbol": "TECHM-EQ",
+      "token": "13538",
+      "name": "Tech Mahindra"
+    },
+    {
+      "symbol": "NESTLEIND-EQ",
+      "token": "17963",
+      "name": "Nestle India"
+    },
+    {
+      "symbol": "INDUSINDBK-EQ",
+      "token": "5258",
+      "name": "IndusInd Bank"
+    },
+    {
+      "symbol": "GRASIM-EQ",
+      "token": "1232",
+      "name": "Grasim Industries"
+    },
+    {
+      "symbol": "DIVISLAB-EQ",
+      "token": "10940",
+      "name": "Divi's Labs"
+    },
+    {
+      "symbol": "BPCL-EQ",
+      "token": "526",
+      "name": "BPCL"
+    },
+    {
+      "symbol": "DRREDDY-EQ",
+      "token": "881",
+      "name": "Dr. Reddy's Labs"
+    },
+    {
+      "symbol": "BRITANNIA-EQ",
+      "token": "547",
+      "name": "Britannia"
+    },
+    {
+      "symbol": "CIPLA-EQ",
+      "token": "694",
+      "name": "Cipla"
+    },
+    {
+      "symbol": "EICHERMOT-EQ",
+      "token": "910",
+      "name": "Eicher Motors"
+    },
+    {
+      "symbol": "APOLLOHOSP-EQ",
+      "token": "157",
+      "name": "Apollo Hospitals"
+    },
+    {
+      "symbol": "HEROMOTOCO-EQ",
+      "token": "1348",
+      "name": "Hero MotoCorp"
+    },
+    {
+      "symbol": "SBILIFE-EQ",
+      "token": "21808",
+      "name": "SBI Life Insurance"
+    },
+    {
+      "symbol": "TATACONSUM-EQ",
+      "token": "3432",
+      "name": "Tata Consumer"
+    },
+    {
+      "symbol": "HINDALCO-EQ",
+      "token": "1363",
+      "name": "Hindalco"
+    },
+    {
+      "symbol": "BAJAJ-AUTO-EQ",
+      "token": "16669",
+      "name": "Bajaj Auto"
+    },
+    {
+      "symbol": "UPL-EQ",
+      "token": "11287",
+      "name": "UPL"
+    },
+    {
+      "symbol": "HDFCLIFE-EQ",
+      "token": "467",
+      "name": "HDFC Life"
+    },
+    {
+      "symbol": "SHRIRAMFIN-EQ",
+      "token": "4306",
+      "name": "Shriram Finance"
+    },
+    {
+      "symbol": "ETERNAL-EQ",
+      "token": "5097",
+      "name": "Eternal (Zomato)"
+    },
+    {
+      "symbol": "JIOFIN-EQ",
+      "token": "18143",
+      "name": "Jio Financial Services"
+    },
+    {
+      "symbol": "TRENT-EQ",
+      "token": "1964",
+      "name": "Trent"
+    },
+    {
+      "symbol": "BEL-EQ",
+      "token": "383",
+      "name": "Bharat Electronics"
+    },
+    {
+      "symbol": "INDIGO-EQ",
+      "token": "11195",
+      "name": "InterGlobe Aviation"
+    },
+    {
+      "symbol": "MAXHEALTH-EQ",
+      "token": "22377",
+      "name": "Max Healthcare Institute"
+    }
   ],
   "index": {
     "symbol": "NIFTY",
