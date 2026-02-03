@@ -44,3 +44,16 @@ regardless of server timezone, ensuring correct market hours detection globally.
 - Verified imports work correctly
 - Tested timezone conversion with zoneinfo
 - Confirmed scheduler uses IST timezone
+
+fix(auth): make SMTP configurable and improve email error handling
+
+Make SMTP host/port, SSL/TLS mode and timeout configurable via environment
+variables. Add clearer connection error handling and support both implicit
+SSL (port 465) and STARTTLS (port 587). This fixes timeout/failure when the
+server's default SMTP ports are blocked or unreachable and makes email
+settings overridable for cloud hosting.
+
+Files changed:
+- .env.example
+- src/api/auth.py
+

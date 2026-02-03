@@ -22,6 +22,11 @@ def get_auth_config():
         'smtp_email': os.environ.get('AUTH_SMTP_EMAIL', ''),
         'smtp_password': os.environ.get('AUTH_SMTP_APP_PASSWORD', ''),
         'user_email': os.environ.get('AUTH_USER_EMAIL', ''),
+        'smtp_host': os.environ.get('AUTH_SMTP_HOST', 'smtp.gmail.com'),
+        'smtp_port': int(os.environ.get('AUTH_SMTP_PORT', '465')),
+        'smtp_use_ssl': os.environ.get('AUTH_SMTP_USE_SSL', 'true').lower() in ('1', 'true', 'yes'),
+        'smtp_use_tls': os.environ.get('AUTH_SMTP_USE_TLS', 'false').lower() in ('1', 'true', 'yes'),
+        'smtp_timeout': float(os.environ.get('AUTH_SMTP_TIMEOUT', '10')),
         'jwt_secret': os.environ.get('AUTH_JWT_SECRET', 'default-secret-change-me'),
         'token_validity_days': int(os.environ.get('AUTH_TOKEN_VALIDITY_DAYS', '7'))
     }
@@ -137,17 +142,37 @@ def send_otp_email(otp: str) -> Tuple[bool, str]:
         msg.attach(MIMEText(text, 'plain'))
         msg.attach(MIMEText(html, 'html'))
         
-        # Send via Gmail SMTP
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(config['smtp_email'], config['smtp_password'])
-            server.send_message(msg)
-        
+        # Send via configurable SMTP server
+        smtp_host = config.get('smtp_host', 'smtp.gmail.com')
+        smtp_port = config.get('smtp_port', 465)
+        use_ssl = config.get('smtp_use_ssl', True)
+        use_tls = config.get('smtp_use_tls', False)
+        timeout = config.get('smtp_timeout', 10)
+
+        if use_ssl:
+            # Implicit SSL (recommended for port 465)
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=timeout) as server:
+                server.login(config['smtp_email'], config['smtp_password'])
+                server.send_message(msg)
+        else:
+            # Plain connection with optional STARTTLS (commonly port 587)
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=timeout) as server:
+                server.ehlo()
+                if use_tls:
+                    server.starttls()
+                    server.ehlo()
+                server.login(config['smtp_email'], config['smtp_password'])
+                server.send_message(msg)
+
         logger.success(f"📧 OTP email sent to {config['user_email'][:3]}***")
         return True, "Code sent to your email"
         
     except smtplib.SMTPAuthenticationError:
         logger.error("❌ SMTP authentication failed - check app password")
         return False, "Email authentication failed"
+    except (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected, OSError) as e:
+        logger.error(f"❌ Email sending connection error: {e}")
+        return False, "Email connection failed"
     except Exception as e:
         logger.error(f"❌ Email sending error: {e}")
         return False, "Failed to send email"
