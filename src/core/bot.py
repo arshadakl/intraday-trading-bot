@@ -1231,6 +1231,10 @@ class TradingBot:
         This is called after switching strategies to ensure the selected stocks
         are appropriate for the new strategy's criteria.
         
+        Special handling for different pickers:
+        - preopen_gap: Fetches stocks from NSE pre-open API (for 3-minute strategy)
+        - Others: Uses pre-market analyzer with broker data
+        
         Args:
             strategy_name: Name of the strategy to pick stocks for
             
@@ -1250,7 +1254,11 @@ class TradingBot:
             
             logger.info(f"📊 Using stock picker: {picker_name}")
             
-            # Get fresh stock data using pre-market analyzer
+            # Special handling for preopen_gap picker (3-minute strategy)
+            if picker_name == "preopen_gap":
+                return self._repick_with_preopen_gap_picker(picker)
+            
+            # Standard flow: Get fresh stock data using pre-market analyzer
             logger.info("🔍 Fetching latest stock data...")
             analyzed_stocks = self.pre_market_analyzer.analyze_all_stocks()
             
@@ -1316,6 +1324,115 @@ class TradingBot:
             
         except Exception as e:
             logger.error(f"❌ Error repicking stocks: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    def _repick_with_preopen_gap_picker(self, picker) -> bool:
+        """
+        Special stock picking for 3-Minute Strategy using NSE pre-open data.
+        
+        This method fetches gap-up and gap-down stocks from NSE pre-open API
+        instead of using broker historical data.
+        
+        Args:
+            picker: PreOpenGapPicker instance
+            
+        Returns:
+            True if stocks were successfully selected
+        """
+        logger.info("📊 Using NSE Pre-Open Data for 3-Minute Strategy")
+        
+        try:
+            # Get strategy params for min_gap
+            strategy_params = self.config.get('strategies.three_minute.params', {})
+            min_gap = strategy_params.get('min_gap_percent', 1.0)
+            max_stocks = self.config.max_stocks
+            
+            # Fetch and select gap candidates from NSE
+            # This will wait until 9:10 AM if called before
+            logger.info(f"🔍 Fetching gap stocks (min gap: {min_gap}%, max: {max_stocks} per direction)")
+            
+            candidates = picker.fetch_and_select_candidates(
+                max_stocks=max_stocks,
+                min_gap=min_gap,
+                wait_for_data=True  # Wait for 9:10 AM if needed
+            )
+            
+            bullish = candidates.get('bullish', [])
+            bearish = candidates.get('bearish', [])
+            
+            if not bullish and not bearish:
+                logger.warning("⚠️ No gap candidates found in pre-open data")
+                return False
+            
+            # Get Nifty 50 stock list for token mapping
+            nifty50_stocks = self.config.get_nifty50_stocks()
+            
+            # Map to broker format (add tokens)
+            mapped_stocks = picker.map_to_broker_format(nifty50_stocks)
+            
+            if not mapped_stocks:
+                logger.warning("⚠️ No stocks could be mapped to broker format")
+                return False
+            
+            # Store old stocks for logging
+            old_symbols = [s['symbol'] for s in self.selected_stocks] if self.selected_stocks else []
+            
+            # Update selected stocks
+            self.selected_stocks = mapped_stocks
+            
+            # Calculate entry points for new stocks
+            for stock in self.selected_stocks:
+                entry_info = self.strategy.calculate_entry_points(stock)
+                stock.update(entry_info)
+            
+            # Set gap candidates in strategy for signal generation
+            if hasattr(self.strategy, 'set_gap_candidates'):
+                self.strategy.set_gap_candidates(mapped_stocks)
+            
+            new_symbols = [s['symbol'] for s in self.selected_stocks]
+            
+            logger.info(f"✅ Selected {len(self.selected_stocks)} gap stocks from NSE pre-open:")
+            for i, stock in enumerate(self.selected_stocks, 1):
+                direction = stock.get('trade_direction', 'LONG')
+                gap = stock.get('gap_percent', 0)
+                logger.info(f"   {i}. {stock['symbol']} ({direction}) Gap: {gap:+.2f}%")
+            
+            if old_symbols != new_symbols:
+                logger.info(f"📝 Stock change: {old_symbols} → {new_symbols}")
+            
+            self._log_activity(
+                "REPICK",
+                f"Pre-open gap stocks selected for 3-minute strategy",
+                {"stocks": new_symbols, "previous": old_symbols}
+            )
+            
+            # Update market analysis for dashboard
+            self.market_analysis["stocks"] = [
+                {
+                    "symbol": s['symbol'],
+                    "composite_score": s.get('picker_score', 0),
+                    "ltp": s.get('iep', s.get('ltp', 0)),
+                    "entry_price": s.get('entry_price', 0),
+                    "stop_loss": s.get('stop_loss', 0),
+                    "target_price": s.get('target_price', 0),
+                    "gap_percent": s.get('gap_percent', 0),
+                    "trade_direction": s.get('trade_direction', 'LONG')
+                }
+                for s in self.selected_stocks
+            ]
+            
+            # If WebSocket is connected, update subscriptions
+            if self.websocket and hasattr(self.websocket, 'is_connected') and self.websocket.is_connected:
+                logger.info("🔄 Updating WebSocket subscriptions for gap stocks...")
+                self._restart_monitoring_with_new_stocks()
+            
+            logger.info("=" * 60)
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Error in pre-open gap picking: {e}")
             import traceback
             traceback.print_exc()
             return False

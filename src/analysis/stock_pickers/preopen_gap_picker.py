@@ -232,6 +232,13 @@ class PreOpenGapPicker(BaseStockPicker):
         
         logger.info(f"Processing {len(preopen_data)} stocks from final pre-open data")
         
+        # Auto-update Nifty 50 config with latest stocks from pre-open data
+        try:
+            from src.utils.nifty50_updater import update_from_preopen_data
+            update_from_preopen_data(preopen_data)
+        except Exception as e:
+            logger.warning(f"⚠️ Could not auto-update Nifty 50 list: {e}")
+        
         # Update min gap filter
         self.min_gap_percent = min_gap
         
