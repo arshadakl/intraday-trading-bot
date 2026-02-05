@@ -14,7 +14,7 @@
     "min_price": 100,
     "max_price": 5000
   },
-  "active_strategy": "ohl",
+  "active_strategy": "vwap_rsi",
   "strategies": {
     "vwap_rsi": {
       "enabled": true,
@@ -55,6 +55,26 @@
         "max_sl_percent": 2.0,
         "max_trades_per_day": 3
       }
+    },
+    "three_minute": {
+      "enabled": true,
+      "display_name": "3-Minute Strategy (Pre-Open Gap)",
+      "description": "Trade gap-up/gap-down stocks identified from NSE pre-open session with candle breakout confirmation",
+      "stock_picker": "preopen_gap",
+      "params": {
+        "min_gap_percent": 1.0,
+        "max_gap_percent": 8.0,
+        "entry_window_start": "09:20",
+        "entry_window_end": "10:30",
+        "stop_loss_percent": 1.0,
+        "target_percent": 2.0,
+        "risk_reward_ratio": 2.0,
+        "max_sl_percent": 2.0,
+        "require_nifty_alignment": true,
+        "use_opening_range_breakout": true,
+        "opening_range_minutes": 5,
+        "max_trades_per_day": 5
+      }
     }
   },
   "strategy": {
@@ -64,7 +84,7 @@
     "target_percent": null,
     "target_max": 1.5,
     "trailing_stop_loss": false,
-    "max_trades_per_day": 3,
+    "max_trades_per_day": 5,
     "rsi_oversold": 40,
     "rsi_overbought": 70
   },
@@ -75,6 +95,7 @@
   },
   "timing": {
     "analysis_start": "08:30",
+    "preopen_data_ready": "09:10",
     "trading_start": "09:15",
     "no_new_trade_after": "15:00",
     "square_off_time": "15:15",

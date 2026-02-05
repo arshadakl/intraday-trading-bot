@@ -54,12 +54,12 @@ class PreOpenGapPicker(BaseStockPicker):
         }
         
         # Filters
-        self.min_price = 100
+        self.min_price = 50             # Lower bound for price filtering
         self.max_price = 5000
-        self.min_gap_percent = 0.5      # Minimum gap to consider
+        self.min_gap_percent = 0.3      # Minimum gap to consider (lowered from 0.5)
         self.ideal_gap_percent = 2.0    # Ideal gap for scoring
-        self.max_gap_percent = 8.0      # Avoid extreme gaps (possible news/events)
-        self.min_volume = 10000         # Minimum pre-open volume
+        self.max_gap_percent = 10.0     # Allow up to 10% gap (was 8%)
+        self.min_volume = 5000          # Minimum pre-open volume (lowered from 10000)
         
         # Selected stocks per type
         self.bullish_candidates: List[Dict] = []  # Gap up stocks
@@ -242,41 +242,72 @@ class PreOpenGapPicker(BaseStockPicker):
         # Update min gap filter
         self.min_gap_percent = min_gap
         
+        # Simple selection: Get top N stocks by gap percentage (highest positive, highest negative)
+        # This is more reliable than complex scoring
+        
         # Separate by gap direction
-        gap_up_stocks = [s for s in preopen_data if s.get('gap_percent', 0) >= min_gap]
-        gap_down_stocks = [s for s in preopen_data if s.get('gap_percent', 0) <= -min_gap]
+        gap_up_stocks = [s for s in preopen_data if s.get('gap_percent', 0) > 0.01]  # Any positive gap
+        gap_down_stocks = [s for s in preopen_data if s.get('gap_percent', 0) < -0.01]  # Any negative gap
         
-        # Apply filters
-        filtered_gap_up = self.filter_stocks(gap_up_stocks)
-        filtered_gap_down = self.filter_stocks(gap_down_stocks)
+        # Sort by absolute gap (highest first)
+        gap_up_stocks.sort(key=lambda x: x.get('gap_percent', 0), reverse=True)
+        gap_down_stocks.sort(key=lambda x: x.get('gap_percent', 0))  # Most negative first
         
-        # Score and select top stocks
-        bullish = self.select_top_stocks(filtered_gap_up, max_stocks)
-        bearish = self.select_top_stocks(filtered_gap_down, max_stocks)
+        # Apply basic volume filter and gap range check
+        bullish = [
+            s for s in gap_up_stocks[:max_stocks * 2]  # Get more to filter
+            if (self.min_gap_percent <= s.get('gap_percent', 0) <= self.max_gap_percent and
+                s.get('volume', 0) >= self.min_volume)
+        ][:max_stocks]  # Take top N after filtering
+        
+        bearish = [
+            s for s in gap_down_stocks[:max_stocks * 2]  # Get more to filter
+            if (-self.max_gap_percent <= s.get('gap_percent', 0) <= -self.min_gap_percent and
+                s.get('volume', 0) >= self.min_volume)
+        ][:max_stocks]  # Take top N after filtering
+        
+        # If not enough stocks pass filters, relax the volume requirement
+        if len(bullish) < max_stocks:
+            bullish = gap_up_stocks[
+                :min(max_stocks, len([
+                    s for s in gap_up_stocks
+                    if self.min_gap_percent <= s.get('gap_percent', 0) <= self.max_gap_percent
+                ]))
+            ]
+        
+        if len(bearish) < max_stocks:
+            bearish = gap_down_stocks[
+                :min(max_stocks, len([
+                    s for s in gap_down_stocks
+                    if -self.max_gap_percent <= s.get('gap_percent', 0) <= -self.min_gap_percent
+                ]))
+            ]
         
         # Store for later access
         self.bullish_candidates = bullish
         self.bearish_candidates = bearish
         
-        # Log summary
+        # Log summary with details
         if bullish:
-            logger.info(f"📈 Gap UP Candidates: {[s['symbol'] for s in bullish]}")
-            for s in bullish:
+            logger.info(f"📈 Gap UP Candidates ({len(bullish)} selected):")
+            for i, s in enumerate(bullish, 1):
                 logger.info(
-                    f"   {s['symbol']}: Gap +{s['gap_percent']:.2f}%, "
-                    f"IEP=₹{s.get('iep', 0):.2f}, Vol={s.get('volume', 0):,}"
+                    f"   {i}. {s['symbol']:12} | Gap: +{s.get('gap_percent', 0):6.2f}% | "
+                    f"IEP: ₹{s.get('iep', 0):8.2f} | Vol: {s.get('volume', 0):>7,}"
                 )
         
         if bearish:
-            logger.info(f"📉 Gap DOWN Candidates: {[s['symbol'] for s in bearish]}")
-            for s in bearish:
+            logger.info(f"📉 Gap DOWN Candidates ({len(bearish)} selected):")
+            for i, s in enumerate(bearish, 1):
                 logger.info(
-                    f"   {s['symbol']}: Gap {s['gap_percent']:.2f}%, "
-                    f"IEP=₹{s.get('iep', 0):.2f}, Vol={s.get('volume', 0):,}"
+                    f"   {i}. {s['symbol']:12} | Gap: {s.get('gap_percent', 0):6.2f}% | "
+                    f"IEP: ₹{s.get('iep', 0):8.2f} | Vol: {s.get('volume', 0):>7,}"
                 )
         
         if not bullish and not bearish:
-            logger.info("⚠️ No gap candidates found matching criteria")
+            logger.warning("⚠️ No gap candidates found matching criteria")
+            logger.info(f"   Total stocks in data: {len(preopen_data)}")
+            logger.info(f"   Filters: Gap {self.min_gap_percent}%-{self.max_gap_percent}%, Vol>{self.min_volume}")
         
         return {
             'bullish': bullish,
