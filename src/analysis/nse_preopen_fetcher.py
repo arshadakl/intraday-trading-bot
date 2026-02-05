@@ -56,13 +56,20 @@ class NSEPreOpenFetcher:
     
     # Request headers to mimic browser
     HEADERS = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'Accept-Language': 'en-US,en;q=0.9',
         'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'max-age=0',
         'Connection': 'keep-alive',
-        'Referer': 'https://www.nseindia.com/market-data/pre-open-market-cm-and-emerge-market',
-        'X-Requested-With': 'XMLHttpRequest',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
     }
     
     def __init__(self, segment: str = 'nifty'):
@@ -92,10 +99,10 @@ class NSEPreOpenFetcher:
         
     def _initialize_session(self) -> bool:
         """
-        Initialize session by visiting NSE homepage to get cookies.
+        Initialize session by visiting NSE homepage and pre-open page to get cookies.
         
         NSE requires specific cookies for API access. This method
-        visits the homepage to obtain those cookies.
+        visits the homepage and pre-open page to obtain those cookies.
         
         Returns:
             True if session initialized successfully
@@ -103,18 +110,33 @@ class NSEPreOpenFetcher:
         try:
             logger.debug("Initializing NSE session...")
             
-            # First visit the homepage to get cookies
+            # First visit the homepage to get initial cookies
             response = self.session.get(
                 self.NSE_BASE_URL,
                 timeout=10,
                 allow_redirects=True
             )
             
+            if response.status_code != 200:
+                logger.warning(f"NSE homepage returned status {response.status_code}")
+                return False
+            
+            # Small delay
+            time.sleep(0.5)
+            
+            # Visit the pre-open market page to get specific cookies
+            preopen_page_url = "https://www.nseindia.com/market-data/pre-open-market-cm-and-emerge-market"
+            response = self.session.get(
+                preopen_page_url,
+                timeout=10,
+                allow_redirects=True
+            )
+            
             if response.status_code == 200:
-                logger.debug("NSE session initialized with cookies")
+                logger.debug("NSE session initialized with cookies from pre-open page")
                 return True
             else:
-                logger.warning(f"NSE homepage returned status {response.status_code}")
+                logger.warning(f"NSE pre-open page returned status {response.status_code}")
                 return False
                 
         except requests.exceptions.RequestException as e:
@@ -157,11 +179,19 @@ class NSEPreOpenFetcher:
                 time.sleep(0.5)  # Small delay after cookie fetch
             
             try:
-                # Fetch pre-open data
+                # Fetch pre-open data with API-specific headers
                 url = f"{self.PREOPEN_API_URL}?key={self.segment}"
                 logger.info(f"Fetching pre-open data from NSE for segment: {self.segment}")
                 
-                response = self.session.get(url, timeout=15)
+                # Update headers for API call
+                api_headers = self.HEADERS.copy()
+                api_headers.update({
+                    'Accept': 'application/json, text/javascript, */*; q=0.01',
+                    'Referer': 'https://www.nseindia.com/market-data/pre-open-market-cm-and-emerge-market',
+                    'X-Requested-With': 'XMLHttpRequest',
+                })
+                
+                response = self.session.get(url, headers=api_headers, timeout=15)
                 
                 if response.status_code == 200:
                     raw_data = response.json()
