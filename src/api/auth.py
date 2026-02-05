@@ -19,13 +19,13 @@ from loguru import logger
 def get_auth_config():
     """Get authentication configuration from environment"""
     return {
-        'smtp_email': os.environ.get('AUTH_SMTP_EMAIL', ''),
-        'smtp_password': os.environ.get('AUTH_SMTP_APP_PASSWORD', ''),
-        'user_email': os.environ.get('AUTH_USER_EMAIL', ''),
+        'smtp_email': os.environ.get('AUTH_SMTP_EMAIL', '').strip(),
+        'smtp_password': os.environ.get('AUTH_SMTP_APP_PASSWORD', '').strip(),
+        'user_email': os.environ.get('AUTH_USER_EMAIL', '').strip(),
         'smtp_host': os.environ.get('AUTH_SMTP_HOST', 'smtp.gmail.com'),
-        'smtp_port': int(os.environ.get('AUTH_SMTP_PORT', '465')),
-        'smtp_use_ssl': os.environ.get('AUTH_SMTP_USE_SSL', 'true').lower() in ('1', 'true', 'yes'),
-        'smtp_use_tls': os.environ.get('AUTH_SMTP_USE_TLS', 'false').lower() in ('1', 'true', 'yes'),
+        'smtp_port': int(os.environ.get('AUTH_SMTP_PORT', '587')),
+        'smtp_use_ssl': os.environ.get('AUTH_SMTP_USE_SSL', 'false').lower() in ('1', 'true', 'yes'),
+        'smtp_use_tls': os.environ.get('AUTH_SMTP_USE_TLS', 'true').lower() in ('1', 'true', 'yes'),
         'smtp_timeout': float(os.environ.get('AUTH_SMTP_TIMEOUT', '10')),
         'jwt_secret': os.environ.get('AUTH_JWT_SECRET', 'default-secret-change-me'),
         'token_validity_days': int(os.environ.get('AUTH_TOKEN_VALIDITY_DAYS', '7'))
