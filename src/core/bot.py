@@ -226,13 +226,15 @@ class TradingBot:
             # Import strategies here to trigger registration (avoids circular imports)
             from src.strategy.vwap_rsi_strategy import VWAPRSIStrategy  # noqa: F401
             from src.strategy.ohl_strategy import OHLStrategy  # noqa: F401
+            from src.strategy.three_minute_strategy import ThreeMinuteStrategy  # noqa: F401
             # Import stock pickers to trigger registration
             from src.analysis.stock_pickers.ohl_picker import OHLStockPicker  # noqa: F401
+            from src.analysis.stock_pickers.preopen_gap_picker import PreOpenGapPicker  # noqa: F401
             
-            active_strategy_name = self.config.get('active_strategy', 'vwap_rsi')
+            active_strategy_name = self.config.get('active_strategy', 'three_minute')
             if not StrategyRegistry.is_registered(active_strategy_name):
-                logger.warning(f"⚠️ Strategy '{active_strategy_name}' not found, falling back to 'vwap_rsi'")
-                active_strategy_name = 'vwap_rsi'
+                logger.warning(f"⚠️ Strategy '{active_strategy_name}' not found, falling back to 'three_minute'")
+                active_strategy_name = 'three_minute'
             
             self.strategy = StrategyRegistry.get_strategy(active_strategy_name)
             self.current_strategy_name = active_strategy_name
@@ -256,6 +258,13 @@ class TradingBot:
             # 8. Sync persisted positions from paper_trader to position_tracker
             if self.config.is_paper_mode and self.paper_trader:
                 self._sync_positions_from_paper_trader()
+            
+            # Update Nifty 50 list on startup (if not already updated today)
+            try:
+                logger.info("📊 Checking Nifty 50 data freshness...")
+                self._update_nifty50_on_startup()
+            except Exception as e:
+                logger.warning(f"⚠️ Could not update Nifty 50 on startup: {e}")
             
             self.status = "READY"
             logger.success("✅ Bot initialized successfully!")
@@ -985,6 +994,13 @@ class TradingBot:
             self.run_pre_market_analysis
         )
         
+        # Update Nifty 50 list when pre-open data is final (9:10 AM)
+        self.scheduler.schedule_task(
+            "nifty50_update",
+            timing.get("preopen_data_ready", "09:10"),
+            self._update_nifty50_from_nse
+        )
+        
         # Reset daily state just before market open
         self.scheduler.schedule_task(
             "daily_reset",
@@ -1026,6 +1042,216 @@ class TradingBot:
             300,  # 5 minutes
             self._log_heartbeat
         )
+    
+    def _update_nifty50_on_startup(self) -> None:
+        """
+        Update Nifty 50 list on startup if data is stale.
+        
+        Checks if the nifty50.json was updated today. If not, triggers an update.
+        This ensures we always have fresh data when the bot starts.
+        """
+        from pathlib import Path
+        import json
+        from datetime import datetime
+        
+        nifty50_path = Path("config/nifty50.json")
+        
+        # If file doesn't exist, definitely update
+        if not nifty50_path.exists():
+            logger.warning("📊 Nifty 50 file not found - will update")
+            self._update_nifty50_from_nse()
+            return
+        
+        try:
+            # Read the file to check last update time
+            with open(nifty50_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            last_updated_str = data.get('_updated')
+            
+            if not last_updated_str:
+                logger.warning("📊 Nifty 50 file has no update timestamp - will update")
+                self._update_nifty50_from_nse()
+                return
+            
+            # Parse the timestamp
+            last_updated = datetime.fromisoformat(last_updated_str)
+            today = datetime.now().date()
+            
+            # If last update was not today, update it
+            if last_updated.date() < today:
+                logger.info(f"📊 Nifty 50 data is from {last_updated.date()} - updating now")
+                self._update_nifty50_from_nse()
+            else:
+                logger.info(f"✅ Nifty 50 data is fresh (updated: {last_updated_str})")
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Could not check Nifty 50 freshness: {e} - will update anyway")
+            self._update_nifty50_from_nse()
+    
+    def _update_nifty50_from_nse(self) -> None:
+        """
+        Update Nifty 50 stock list from NSE pre-open API.
+        
+        Called at 9:10 AM when pre-open data is final.
+        This ensures we have the latest Nifty 50 constituents and their tokens
+        before market opens.
+        
+        If the API fails and no file exists, creates a default file with standard
+        Nifty 50 stocks to ensure the bot can operate.
+        """
+        from pathlib import Path
+        
+        logger.info("=" * 60)
+        logger.info("📊 UPDATING NIFTY 50 FROM NSE API")
+        logger.info("=" * 60)
+        
+        nifty50_path = Path("config/nifty50.json")
+        
+        try:
+            from src.utils.nifty50_updater import update_nifty50_at_market_open
+            
+            success = update_nifty50_at_market_open()
+            
+            if success:
+                logger.info("✅ Nifty 50 list updated successfully from NSE API")
+                self._log_activity("UPDATE", "Nifty 50 list updated from NSE API")
+                
+                # Reload config to get updated stock list
+                self.config.reload()
+            else:
+                logger.warning("⚠️ Failed to fetch from NSE API")
+                
+                # If file doesn't exist, create it with default data
+                if not nifty50_path.exists():
+                    logger.warning("📝 Creating default Nifty 50 file...")
+                    self._create_default_nifty50_file()
+                else:
+                    logger.info("📂 Using existing Nifty 50 data")
+                    self._log_activity("WARNING", "Nifty 50 update failed - using cached data")
+                
+        except Exception as e:
+            logger.error(f"❌ Error updating Nifty 50: {e}")
+            self._log_activity("ERROR", f"Nifty 50 update error: {str(e)}")
+            
+            # Create default file if doesn't exist
+            if not nifty50_path.exists():
+                logger.warning("📝 Creating default Nifty 50 file due to error...")
+                self._create_default_nifty50_file()
+    
+    def _create_default_nifty50_file(self) -> None:
+        """
+        Create nifty50.json by fetching data from NSE Pre-Open API.
+        
+        This method tries to fetch live data from NSE. If NSE API is unavailable
+        (e.g., outside pre-open hours), it creates an empty placeholder file
+        that will be populated when the scheduled 9:10 AM update runs.
+        """
+        import json
+        from pathlib import Path
+        from datetime import datetime
+        
+        logger.info("📊 Attempting to fetch Nifty 50 data from NSE API...")
+        
+        try:
+            # Try to fetch from NSE Pre-Open API
+            from src.analysis.nse_preopen_fetcher import NSEPreOpenFetcher
+            
+            fetcher = NSEPreOpenFetcher()
+            raw_data = fetcher.fetch_preopen_data()
+            
+            if raw_data and len(raw_data) > 0:
+                logger.info(f"✅ Fetched {len(raw_data)} stocks from NSE API")
+                
+                # Build stock list in NSE API order
+                stocks = []
+                for idx, stock in enumerate(raw_data):
+                    stock_data = {
+                        'rank': idx + 1,
+                        'symbol': f"{stock.get('symbol', '')}-EQ",
+                        'token': '',  # Will be fetched from Angel One
+                        'name': stock.get('symbol', ''),
+                        'iep': stock.get('iep', 0),
+                        'last_price': stock.get('last_price', 0),
+                        'prev_close': stock.get('prev_close', 0),
+                        'change': stock.get('change', 0),
+                        'change_percent': stock.get('change_percent', 0),
+                        'gap_percent': stock.get('gap_percent', 0),
+                        'gap_type': stock.get('gap_type', 'NEUTRAL'),
+                        'volume': stock.get('volume', 0),
+                        'final_quantity': stock.get('final_quantity', 0),
+                        'year_high': stock.get('year_high', 0),
+                        'year_low': stock.get('year_low', 0),
+                    }
+                    stocks.append(stock_data)
+                
+                nifty50_data = {
+                    "stocks": stocks,
+                    "index": {"symbol": "NIFTY", "token": "99926000"},
+                    "market_summary": {
+                        "advances": len([s for s in stocks if s.get('change', 0) > 0]),
+                        "declines": len([s for s in stocks if s.get('change', 0) < 0]),
+                        "unchanged": len([s for s in stocks if s.get('change', 0) == 0]),
+                    },
+                    "_updated": datetime.now().isoformat(),
+                    "_source": "NSE Pre-Open API",
+                    "_order": "NSE pre-open ranking (important for 3-min strategy)"
+                }
+                
+                # Try to fetch tokens from Angel One
+                try:
+                    from src.utils.angel_token_fetcher import AngelTokenFetcher
+                    token_fetcher = AngelTokenFetcher()
+                    
+                    # Save file first so token fetcher can update it
+                    nifty50_path = Path("config/nifty50.json")
+                    nifty50_path.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    with open(nifty50_path, 'w', encoding='utf-8') as f:
+                        json.dump(nifty50_data, f, indent=2, ensure_ascii=False)
+                    
+                    logger.info("🔄 Fetching tokens from Angel One...")
+                    token_result = token_fetcher.update_nifty50_tokens()
+                    
+                    if token_result.get('updated', 0) > 0:
+                        logger.info(f"✅ Updated {token_result['updated']} tokens")
+                    
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not fetch tokens: {e}")
+                    # Still save the file without tokens
+                    nifty50_path = Path("config/nifty50.json")
+                    nifty50_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(nifty50_path, 'w', encoding='utf-8') as f:
+                        json.dump(nifty50_data, f, indent=2, ensure_ascii=False)
+                
+                logger.info(f"✅ Created Nifty 50 file with {len(stocks)} stocks from NSE API")
+                self._log_activity("SYSTEM", f"Created Nifty 50 file with {len(stocks)} stocks")
+                self.config.reload()
+                return
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Could not fetch from NSE API: {e}")
+        
+        # If NSE fetch failed, create empty placeholder
+        logger.warning("📝 Creating empty placeholder - will be populated at 9:10 AM")
+        
+        empty_data = {
+            "stocks": [],
+            "index": {"symbol": "NIFTY", "token": "99926000"},
+            "_updated": datetime.now().isoformat(),
+            "_source": "Placeholder (waiting for 9:10 AM update)",
+            "_note": "NSE API unavailable - data will be fetched at 9:10 AM"
+        }
+        
+        nifty50_path = Path("config/nifty50.json")
+        nifty50_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(nifty50_path, 'w', encoding='utf-8') as f:
+            json.dump(empty_data, f, indent=2, ensure_ascii=False)
+        
+        logger.info("📝 Created empty Nifty 50 placeholder file")
+        self._log_activity("SYSTEM", "Created empty Nifty 50 placeholder - awaiting 9:10 AM update")
+        self.config.reload()
     
     def _reset_daily_state(self) -> None:
         """Reset daily state before market opens"""

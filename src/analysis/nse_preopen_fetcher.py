@@ -171,52 +171,48 @@ class NSEPreOpenFetcher:
             # Rate limiting
             self._rate_limit()
             
-            # Initialize session if needed
-            if not self.session.cookies:
-                if not self._initialize_session():
-                    logger.error("Failed to initialize NSE session")
-                    return []
-                time.sleep(0.5)  # Small delay after cookie fetch
-            
             try:
-                # Fetch pre-open data with API-specific headers
-                url = f"{self.PREOPEN_API_URL}?key={self.segment}"
-                logger.info(f"Fetching pre-open data from NSE for segment: {self.segment}")
+                # Simple approach: Get cookies from homepage first
+                logger.info("Fetching pre-open data from NSE API...")
                 
-                # Update headers for API call
-                api_headers = self.HEADERS.copy()
-                api_headers.update({
-                    'Accept': 'application/json, text/javascript, */*; q=0.01',
-                    'Referer': 'https://www.nseindia.com/market-data/pre-open-market-cm-and-emerge-market',
-                    'X-Requested-With': 'XMLHttpRequest',
+                # Create a fresh session
+                session = requests.Session()
+                session.headers.update({
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.9',
                 })
                 
-                response = self.session.get(url, headers=api_headers, timeout=15)
+                # Visit homepage to get cookies
+                session.get(self.NSE_BASE_URL, timeout=15)
+                time.sleep(0.5)
+                
+                # Fetch pre-open data
+                url = f"{self.PREOPEN_API_URL}?key={self.segment}"
+                logger.info(f"Fetching from: {url}")
+                
+                response = session.get(url, timeout=15)
                 
                 if response.status_code == 200:
-                    raw_data = response.json()
-                    
-                    # Parse the data
-                    parsed_data = self._parse_preopen_data(raw_data)
-                    
-                    # Update cache
-                    self._cache = {'data': parsed_data, 'raw': raw_data}
-                    self._cache_time = now_ist()
-                    self.preopen_data = parsed_data
-                    self.last_fetch_time = now_ist()
-                    
-                    logger.info(f"Successfully fetched {len(parsed_data)} stocks from pre-open data")
-                    return parsed_data
-                    
-                elif response.status_code == 401 or response.status_code == 403:
-                    # Session expired, reinitialize
-                    logger.warning("NSE session expired, reinitializing...")
-                    self.session.cookies.clear()
-                    if self._initialize_session():
-                        time.sleep(0.5)
-                        return self.fetch_preopen_data(force_refresh=True)
-                    return []
-                    
+                    try:
+                        raw_data = response.json()
+                        
+                        # Parse the data
+                        parsed_data = self._parse_preopen_data(raw_data)
+                        
+                        # Update cache
+                        self._cache = {'data': parsed_data, 'raw': raw_data}
+                        self._cache_time = now_ist()
+                        self.preopen_data = parsed_data
+                        self.last_fetch_time = now_ist()
+                        
+                        logger.info(f"✅ Successfully fetched {len(parsed_data)} stocks from NSE pre-open API")
+                        return parsed_data
+                        
+                    except Exception as e:
+                        logger.error(f"Error parsing JSON response: {e}")
+                        logger.debug(f"Response content: {response.text[:200]}")
+                        return []
                 else:
                     logger.error(f"NSE API returned status {response.status_code}")
                     return []
@@ -225,7 +221,9 @@ class NSEPreOpenFetcher:
                 logger.error(f"Error fetching pre-open data: {e}")
                 return []
             except Exception as e:
-                logger.error(f"Error parsing pre-open data: {e}")
+                logger.error(f"Unexpected error in fetch_preopen_data: {e}")
+                import traceback
+                traceback.print_exc()
                 return []
     
     def _parse_preopen_data(self, raw_data: Dict) -> List[Dict]:
@@ -319,8 +317,9 @@ class NSEPreOpenFetcher:
                 
                 parsed.append(stock_data)
             
-            # Sort by absolute gap percentage (highest gaps first)
-            parsed.sort(key=lambda x: abs(x['gap_percent']), reverse=True)
+            # IMPORTANT: Do NOT sort - preserve the exact order from NSE API
+            # The NSE API returns stocks in a specific order based on pre-open activity
+            # This order is critical for the 3-minute strategy
             
             return parsed
             

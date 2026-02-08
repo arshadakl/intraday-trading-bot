@@ -25,7 +25,7 @@ DEFAULT_CONFIG = {
     # Multi-strategy configuration
     "strategies": {
         "vwap_rsi": {
-            "enabled": True,
+            "enabled": False,  # Disabled - focusing on 3-minute strategy
             "display_name": "VWAP + RSI Momentum",
             "description": "Price crosses VWAP with RSI confirmation for momentum entries",
             "stock_picker": "momentum",
@@ -45,7 +45,7 @@ DEFAULT_CONFIG = {
             }
         },
         "ohl": {
-            "enabled": True,
+            "enabled": False,  # Disabled - focusing on 3-minute strategy
             "display_name": "OHL (Open=High/Low)",
             "description": "Trade based on first candle Open=High (bearish) or Open=Low (bullish) pattern",
             "stock_picker": "ohl",

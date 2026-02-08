@@ -14,7 +14,7 @@
     "min_price": 100,
     "max_price": 5000
   },
-  "active_strategy": "vwap_rsi",
+  "active_strategy": "three_minute",
   "strategies": {
     "vwap_rsi": {
       "enabled": true,

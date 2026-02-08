@@ -3,7 +3,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, List
 from loguru import logger
 
 from config.defaults import DEFAULT_CONFIG
@@ -148,6 +148,24 @@ class ConfigManager:
     def max_trades_per_day(self) -> int:
         """Get maximum trades per day"""
         return self. get("strategy.max_trades_per_day", 3)
+    
+    def get_nifty50_stocks(self) -> List[dict]:
+        """Load Nifty 50 stocks from config/nifty50.json"""
+        nifty50_path = Path("config/nifty50.json")
+        
+        if not nifty50_path.exists():
+            logger.warning(f"⚠️ Nifty 50 config not found at {nifty50_path}")
+            return []
+        
+        try:
+            with open(nifty50_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                stocks = data.get('stocks', [])
+                logger.debug(f"📊 Loaded {len(stocks)} stocks from Nifty 50 config")
+                return stocks
+        except Exception as e:
+            logger.error(f"❌ Error loading Nifty 50 config: {e}")
+            return []
 
 
 # ==================== Singleton Instance ====================

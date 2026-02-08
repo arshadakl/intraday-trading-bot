@@ -1,0 +1,75 @@
+
+async function refreshWatchlistData() {
+    const bullishBody = document.getElementById('watchlist-bullish-body');
+    const bearishBody = document.getElementById('watchlist-bearish-body');
+    const statusDiv = document.getElementById('watchlist-status');
+    
+    if (!bullishBody || !bearishBody) return;
+    
+    try {
+        const response = await fetchWithAuth('/api/nifty50/watchlist');
+        const result = await response.json();
+        
+        if (result.status === 'success' && result.data) {
+            const data = result.data;
+            const bullishStocks = data.stocks?.bullish || [];
+            const bearishStocks = data.stocks?.bearish || [];
+            
+            // Update Status
+            if (statusDiv) {
+                const trend = data.nifty_trend || 'WAITING';
+                const activeSet = data.active_set || 'BOTH';
+                const reason = data.filter_reason || 'Waiting for market open...';
+                
+                let statusColor = 'text-text-secondary';
+                if (trend === 'BULLISH') statusColor = 'text-success';
+                if (trend === 'BEARISH') statusColor = 'text-danger';
+                
+                statusDiv.innerHTML = `
+                    <span class="font-bold ${statusColor}">TREND: ${trend}</span> | 
+                    Active: ${activeSet} | 
+                    <span class="text-text-muted">${reason}</span>
+                `;
+            }
+            
+            // Render Bullish Stocks
+            if (bullishStocks.length > 0) {
+                bullishBody.innerHTML = bullishStocks.map(stock => {
+                    const changeClass = (stock.gap_percent || 0) > 0 ? 'text-success' : 'text-danger';
+                    return `
+                        <tr class="border-b border-border-subtle hover:bg-bg-elevated/50">
+                            <td class="px-3 py-2 font-medium">${(stock.symbol || '').replace('-EQ', '')}</td>
+                            <td class="px-3 py-2 text-right ${changeClass} font-mono">${(stock.gap_percent || 0).toFixed(2)}%</td>
+                            <td class="px-3 py-2 text-right font-mono">₹${(stock.iep || stock.last_price || 0).toLocaleString('en-IN')}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                bullishBody.innerHTML = '<tr><td colspan="3" class="px-3 py-4 text-center text-text-muted">No bullish candidates</td></tr>';
+            }
+            
+            // Render Bearish Stocks
+            if (bearishStocks.length > 0) {
+                bearishBody.innerHTML = bearishStocks.map(stock => {
+                    const changeClass = (stock.gap_percent || 0) > 0 ? 'text-success' : 'text-danger';
+                    return `
+                        <tr class="border-b border-border-subtle hover:bg-bg-elevated/50">
+                            <td class="px-3 py-2 font-medium">${(stock.symbol || '').replace('-EQ', '')}</td>
+                            <td class="px-3 py-2 text-right ${changeClass} font-mono">${(stock.gap_percent || 0).toFixed(2)}%</td>
+                            <td class="px-3 py-2 text-right font-mono">₹${(stock.iep || stock.last_price || 0).toLocaleString('en-IN')}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                bearishBody.innerHTML = '<tr><td colspan="3" class="px-3 py-4 text-center text-text-muted">No bearish candidates</td></tr>';
+            }
+            
+        } else {
+            console.error('Failed to load watchlist:', result);
+        }
+    } catch (error) {
+        console.error('Error fetching watchlist:', error);
+        bullishBody.innerHTML = '<tr><td colspan="3" class="text-center py-2 text-danger">Error loading data</td></tr>';
+        bearishBody.innerHTML = '<tr><td colspan="3" class="text-center py-2 text-danger">Error loading data</td></tr>';
+    }
+}

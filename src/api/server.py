@@ -709,6 +709,64 @@ def create_app() -> Flask:
         except Exception as e:
             return error_response(f"Error reading report: {e}")
     
+    # ==================== Nifty 50 Data ====================
+    
+    @app.route('/api/nifty50/watchlist', methods=['GET'])
+    @require_auth
+    def get_nifty50_watchlist():
+        """Get the daily 3-Minute Strategy watchlist (Top 4 / Bottom 4)."""
+        try:
+            from src.analysis.daily_watchlist import get_watchlist_manager
+            manager = get_watchlist_manager()
+            watchlist = manager.get_watchlist()
+            
+            if not watchlist:
+                # Try generating if missing
+                watchlist = manager.generate_daily_watchlist()
+                
+            return success_response({
+                'data': watchlist
+            })
+        except Exception as e:
+            logger.error(f"Error fetching watchlist: {e}")
+            return error_response(str(e))
+
+    @app.route('/api/nifty50/preopen', methods=['GET'])
+    @require_auth
+    def get_nifty50_preopen():
+        """Get Nifty 50 pre-open data from the stored JSON file"""
+        from pathlib import Path
+        import json
+        
+        nifty50_path = Path("config/nifty50.json")
+        
+        if not nifty50_path.exists():
+            return error_response("Nifty 50 data file not found", "FILE_NOT_FOUND")
+        
+        try:
+            with open(nifty50_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            stocks = data.get('stocks', [])
+            last_updated = data.get('_updated', 'Unknown')
+            source = data.get('_source', 'NSE Pre-Open API')
+            
+            # Get additional metadata if available
+            metadata = {
+                'total_stocks': len(stocks),
+                'last_updated': last_updated,
+                'source': source,
+                'update_time': '09:10 AM IST (Daily)'
+            }
+            
+            return success_response({
+                'stocks': stocks,
+                'metadata': metadata
+            })
+            
+        except Exception as e:
+            return error_response(f"Error reading Nifty 50 data: {e}")
+    
     # ==================== Health Check ====================
     
     @app.route('/api/health')

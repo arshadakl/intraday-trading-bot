@@ -58,35 +58,23 @@ class Nifty50Updater:
         Uses the NSEPreOpenFetcher which handles NSE's anti-bot measures.
         
         Returns:
-            List of stock data with symbol, name, and other details
+            List of stock data with symbol, name, and all NSE metadata
         """
         try:
             fetcher = self._ensure_fetcher()
             
-            # Fetch raw pre-open data (contains all Nifty 50 stocks)
+            # Fetch pre-open data (contains all Nifty 50 stocks)
+            # Returns rich data with iep, change, change_percent, gap_percent, volume, etc.
             raw_data = fetcher.fetch_preopen_data()
             
             if not raw_data:
                 logger.error("❌ No data returned from NSE pre-open API")
                 return []
             
-            stocks = []
-            for item in raw_data:
-                symbol = item.get('symbol', '')
-                
-                if not symbol:
-                    continue
-                
-                stock = {
-                    'symbol': symbol,
-                    'name': symbol,  # Pre-open API doesn't give company name
-                    'iep': item.get('iep', 0),
-                    'prev_close': item.get('prev_close', 0),
-                }
-                stocks.append(stock)
-            
-            logger.info(f"📊 Fetched {len(stocks)} Nifty 50 constituents from NSE pre-open API")
-            return stocks
+            # The fetcher already returns properly structured data
+            # Just pass it through, preserving the order
+            logger.info(f"📊 Fetched {len(raw_data)} Nifty 50 constituents from NSE pre-open API")
+            return raw_data
             
         except Exception as e:
             logger.error(f"❌ Failed to fetch Nifty 50 data: {e}")
@@ -130,7 +118,11 @@ class Nifty50Updater:
     
     def update_nifty50_list(self, nse_stocks: Optional[List[Dict]] = None) -> Tuple[bool, Dict]:
         """
-        Update the Nifty 50 stock list.
+        Update the Nifty 50 stock list from NSE pre-open API.
+        
+        IMPORTANT: This method preserves the exact order of stocks from the NSE API.
+        The order is based on pre-open market activity and is critical for the 
+        3-minute strategy which uses this ordering for stock selection.
         
         Args:
             nse_stocks: Optional pre-fetched NSE stock data. If None, will fetch from API.
@@ -155,21 +147,21 @@ class Nifty50Updater:
             logger.error("❌ No stocks to process - aborting update")
             return False, result
         
-        # Load existing config
+        # Load existing config for token lookup only
         existing_config = self.load_existing_config()
         existing_stocks = existing_config.get('stocks', [])
         
-        # Create lookup by symbol (without -EQ suffix)
-        existing_lookup = {}
+        # Create lookup by symbol for existing tokens
+        existing_token_lookup = {}
         for stock in existing_stocks:
-            base_symbol = stock['symbol'].replace('-EQ', '').upper()
-            existing_lookup[base_symbol] = stock
+            base_symbol = stock.get('symbol', '').replace('-EQ', '').upper()
+            if stock.get('token'):
+                existing_token_lookup[base_symbol] = stock['token']
         
-        # Create set of current NSE symbols
-        nse_symbols = {s['symbol'].upper() for s in nse_stocks}
-        existing_symbols = set(existing_lookup.keys())
+        # Track changes
+        nse_symbols = {s.get('symbol', '').upper() for s in nse_stocks}
+        existing_symbols = set(existing_token_lookup.keys())
         
-        # Find additions and removals
         added_symbols = nse_symbols - existing_symbols
         removed_symbols = existing_symbols - nse_symbols
         unchanged_symbols = nse_symbols & existing_symbols
@@ -178,54 +170,80 @@ class Nifty50Updater:
         result['removed'] = list(removed_symbols)
         result['unchanged'] = list(unchanged_symbols)
         
-        # Log changes
         if added_symbols:
-            logger.info(f"➕ New stocks to add: {sorted(added_symbols)}")
+            logger.info(f"➕ New stocks in Nifty 50: {sorted(added_symbols)}")
         if removed_symbols:
             logger.info(f"➖ Stocks removed from Nifty 50: {sorted(removed_symbols)}")
         
-        # Build updated stock list
+        # Build updated stock list - PRESERVING NSE API ORDER
         updated_stocks = []
         missing_tokens = []
         
-        for nse_stock in nse_stocks:
-            symbol = nse_stock['symbol'].upper()
+        for idx, nse_stock in enumerate(nse_stocks):
+            symbol = nse_stock.get('symbol', '').upper()
+            if not symbol:
+                continue
             
-            if symbol in existing_lookup:
-                # Keep existing stock with token
-                stock = existing_lookup[symbol].copy()
-                # Update name if changed
-                if nse_stock.get('name'):
-                    stock['name'] = nse_stock['name']
-                updated_stocks.append(stock)
-            else:
-                # New stock - add without token
-                new_stock = {
-                    'symbol': f"{symbol}-EQ",
-                    'token': "",  # Token needs to be added manually or fetched from broker
-                    'name': nse_stock.get('name', symbol)
-                }
-                updated_stocks.append(new_stock)
+            # Get token from existing data if available
+            token = existing_token_lookup.get(symbol, '')
+            if not token:
                 missing_tokens.append(symbol)
+            
+            # Create rich stock data with all NSE metadata
+            stock_data = {
+                'rank': idx + 1,  # Position in NSE pre-open order
+                'symbol': f"{symbol}-EQ",
+                'token': token,
+                'name': symbol,  # NSE pre-open API doesn't provide company name
+                
+                # Price data from NSE
+                'iep': nse_stock.get('iep', 0),  # Indicative Equilibrium Price
+                'last_price': nse_stock.get('last_price', 0),
+                'prev_close': nse_stock.get('prev_close', 0),
+                
+                # Change data
+                'change': nse_stock.get('change', 0),
+                'change_percent': nse_stock.get('change_percent', 0),
+                
+                # Gap analysis
+                'gap_percent': nse_stock.get('gap_percent', 0),
+                'gap_type': nse_stock.get('gap_type', 'NEUTRAL'),
+                
+                # Volume
+                'volume': nse_stock.get('volume', 0),
+                'final_quantity': nse_stock.get('final_quantity', 0),
+                
+                # Year high/low
+                'year_high': nse_stock.get('year_high', 0),
+                'year_low': nse_stock.get('year_low', 0),
+            }
+            
+            updated_stocks.append(stock_data)
         
         result['missing_tokens'] = missing_tokens
         result['total_stocks'] = len(updated_stocks)
         
         if missing_tokens:
-            logger.warning(f"⚠️ Stocks missing tokens (need manual update): {missing_tokens}")
+            logger.warning(f"⚠️ Stocks missing tokens: {missing_tokens}")
         
-        # Update config
+        # Update config with rich data structure
         updated_config = {
-            'stocks': updated_stocks,
+            'stocks': updated_stocks,  # Ordered by NSE pre-open ranking
             'index': existing_config.get('index', {"symbol": "NIFTY", "token": "99926000"}),
+            'market_summary': {
+                'advances': len([s for s in updated_stocks if s.get('change', 0) > 0]),
+                'declines': len([s for s in updated_stocks if s.get('change', 0) < 0]),
+                'unchanged': len([s for s in updated_stocks if s.get('change', 0) == 0]),
+            },
             '_updated': datetime.now().isoformat(),
-            '_source': 'NSE India API'
+            '_source': 'NSE Pre-Open API',
+            '_order': 'NSE pre-open ranking (important for 3-min strategy)'
         }
         
         # Save config
         if self.save_config(updated_config):
             result['success'] = True
-            logger.info(f"✅ Nifty 50 list updated: {len(updated_stocks)} stocks")
+            logger.info(f"✅ Nifty 50 list updated: {len(updated_stocks)} stocks (order preserved)")
         
         return result['success'], result
     
@@ -340,6 +358,66 @@ def update_from_preopen_data(preopen_data: List[Dict]) -> bool:
     return success
 
 
+def update_nifty50_at_market_open() -> bool:
+    """
+    Comprehensive Nifty 50 update function designed to run at 9:10 AM.
+    
+    This function:
+    1. Fetches the latest Nifty 50 stock list from NSE pre-open API
+    2. Updates config/nifty50.json with the new list
+    3. Fetches and fills in missing instrument tokens from Angel One
+    
+    Returns:
+        True if update was successful
+    """
+    print("\n" + "=" * 60)
+    print("  📊 NIFTY 50 DAILY UPDATE (9:10 AM)")
+    print("=" * 60)
+    
+    # Step 1: Update Nifty 50 list from NSE
+    print("\n🔄 Step 1: Fetching Nifty 50 constituents from NSE...")
+    updater = Nifty50Updater()
+    
+    try:
+        success, result = updater.update_nifty50_list()
+        
+        if success:
+            logger.info("✅ NIFTY 50 UPDATE COMPLETE")
+            
+            # Fetch missing tokens after update
+            if result.get('missing_tokens'):
+                logger.info(f"🔄 Updating tokens for {len(result['missing_tokens'])} stocks...")
+                try:
+                    from src.utils.angel_token_fetcher import AngelTokenFetcher
+                    token_fetcher = AngelTokenFetcher()
+                    token_result = token_fetcher.update_nifty50_tokens()
+                    
+                    if token_result.get('updated', 0) > 0:
+                        logger.info(f"✅ Updated {token_result['updated']} tokens")
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not fetch tokens: {e}")
+            
+            # Generate Daily Watchlist for 3-Minute Strategy
+            try:
+                from src.analysis.daily_watchlist import get_watchlist_manager
+                manager = get_watchlist_manager()
+                watchlist = manager.generate_daily_watchlist()
+                logger.info(f"✅ Generated Daily Watchlist: {len(watchlist.get('stocks', {}).get('bullish', []))} Bullish, {len(watchlist.get('stocks', {}).get('bearish', []))} Bearish")
+            except Exception as e:
+                logger.error(f"❌ Failed to generate daily watchlist: {e}")
+                
+            return True
+        else:
+            logger.error("❌ Failed to update Nifty 50 list")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ Market open update failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 # CLI support
 if __name__ == "__main__":
     import sys
@@ -352,6 +430,7 @@ if __name__ == "__main__":
     
     print("\n🔄 Updating Nifty 50 Stock List from NSE India...\n")
     
-    success = update_nifty50_stocks()
+    success = update_nifty50_at_market_open()
     
     sys.exit(0 if success else 1)
+
