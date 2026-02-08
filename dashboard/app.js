@@ -40,30 +40,30 @@ function getCurrentTime() {
 
 async function fetchAPI(endpoint, options = {}) {
     const token = getAuthToken();
-    
+
     // Build headers - include auth token if available (but don't require it)
     const headers = {
         'Content-Type': 'application/json',
         ...options.headers
     };
-    
+
     if (token) {
         headers['Authorization'] = `Bearer ${token}`;
     }
-    
+
     try {
         const response = await fetch(`${API_BASE}${endpoint}`, {
             ...options,
             headers: headers
         });
-        
+
         // Handle 401 Unauthorized - only redirect if we had a token (auth was expected)
         if (response.status === 401 && token) {
             localStorage.removeItem('auth_token');
             window.location.href = '/login';
             return { success: false, error: 'Session expired' };
         }
-        
+
         return await response.json();
     } catch (error) {
         console.error(`API Error (${endpoint}):`, error);
@@ -178,7 +178,7 @@ function updateTime() {
 function updateStatusBadge(status) {
     const badge = document.getElementById('status-badge');
     badge.className = 'badge';
-    
+
     switch (status.toUpperCase()) {
         case 'RUNNING':
             badge.className += ' status-running';
@@ -197,7 +197,7 @@ function updateStatusBadge(status) {
 function updateModeBadge(mode) {
     const badge = document.getElementById('mode-badge');
     badge.className = 'badge';
-    
+
     if (mode === 'live') {
         badge.className += ' mode-live';
         badge.textContent = 'LIVE';
@@ -210,12 +210,12 @@ function updateModeBadge(mode) {
 function updateStartupMode(startupMode, currentMode) {
     const badge = document.getElementById('startup-mode-badge');
     if (!badge) return;
-    
+
     badge.className = 'badge';
-    
+
     // Prefer currentMode for real-time accuracy
     const mode = currentMode || startupMode;
-    
+
     switch (mode) {
         case 'STOPPED':
             badge.className += ' startup-mode-non';
@@ -280,7 +280,7 @@ function updateMarketAnalysis(data) {
     const currentMode = data.current_mode;  // Dynamic real-time mode from backend
     const isActivelyTrading = data.is_actively_trading;
     const analysis = data.market_analysis || {};
-    
+
     // Update startup mode in analysis section - now uses current_mode for accuracy
     const modeEl = document.getElementById('analysis-startup-mode');
     if (modeEl) {
@@ -331,20 +331,20 @@ function updateMarketAnalysis(data) {
         }
         modeEl.textContent = modeText;
     }
-    
+
     // Update analysis time
     const timeEl = document.getElementById('analysis-time');
     if (timeEl && analysis.analyzed_at) {
         const date = new Date(analysis.analyzed_at);
         timeEl.textContent = date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
-    
+
     // Update stocks analyzed
     const stocksEl = document.getElementById('stocks-analyzed');
     if (stocksEl) {
         stocksEl.textContent = analysis.total_stocks_analyzed || 0;
     }
-    
+
     // Update server time display
     const serverTimeEl = document.getElementById('server-time');
     if (serverTimeEl && data.server_time) {
@@ -352,12 +352,12 @@ function updateMarketAnalysis(data) {
         const serverTime = data.server_time.server || '--';
         const timezone = data.server_time.timezone || 'Local';
         const offset = data.server_time.offset || '';
-        
+
         // Show actual server time (not IST)
         serverTimeEl.textContent = `🖥️ ${serverTime} ${timezone}`;
         serverTimeEl.title = `IST (Bot uses): ${istTime} | Server (${offset}): ${serverTime}`;
     }
-    
+
     // Update trading status - use current_mode for real-time accuracy
     const statusEl = document.getElementById('trading-status');
     if (statusEl) {
@@ -381,13 +381,13 @@ function updateMarketAnalysis(data) {
             statusEl.style.color = 'var(--text-secondary)';
         }
     }
-    
+
     // Update trading decision box
     const decisionEl = document.getElementById('trading-decision');
     const reasonEl = document.getElementById('trading-reason');
     if (decisionEl && reasonEl) {
         decisionEl.className = 'trading-decision';
-        
+
         if (currentMode === 'TRADING' || isActivelyTrading) {
             decisionEl.className += ' suitable';
             reasonEl.textContent = '✅ ' + (analysis.reason || 'Trading in progress - WebSocket connected');
@@ -408,16 +408,16 @@ function updateMarketAnalysis(data) {
 
 function updateAccountInfo(data) {
     if (!data) return;
-    
+
     document.getElementById('total-balance').textContent = formatPrice(data.total_balance || 0);
     document.getElementById('available-balance').textContent = formatPrice(data.available_balance || 0);
     document.getElementById('used-margin').textContent = formatPrice(data.used_margin || 0);
-    
+
     const pnl = data.daily_pnl || 0;
     const pnlElement = document.getElementById('daily-pnl');
     pnlElement.textContent = formatCurrency(pnl);
     pnlElement.className = `value ${pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}`;
-    
+
     // Update progress bars
     const pnlPercent = Math.min(100, Math.abs((data.daily_pnl_percent || 0)));
     document.getElementById('pnl-progress').style.width = `${pnlPercent * 10}%`;
@@ -425,18 +425,18 @@ function updateAccountInfo(data) {
 
 function updateStocksTable(stocks) {
     const tbody = document.getElementById('stocks-body');
-    
+
     if (!stocks || stocks.length === 0) {
         tbody.innerHTML = '<tr class="no-data"><td colspan="6">No stocks selected yet</td></tr>';
         return;
     }
-    
+
     tbody.innerHTML = stocks.map(stock => {
-        const statusClass = stock.status === 'WATCHING' ? 'status-watching' : 
-                           stock.status === 'POSITION_OPEN' ? 'status-open' : 'status-completed';
-        const statusIcon = stock.status === 'WATCHING' ? '🟢' : 
-                          stock.status === 'POSITION_OPEN' ? '🟡' : '✅';
-        
+        const statusClass = stock.status === 'WATCHING' ? 'status-watching' :
+            stock.status === 'POSITION_OPEN' ? 'status-open' : 'status-completed';
+        const statusIcon = stock.status === 'WATCHING' ? '🟢' :
+            stock.status === 'POSITION_OPEN' ? '🟡' : '✅';
+
         return `
             <tr>
                 <td><strong>${stock.symbol?.replace('-EQ', '') || 'N/A'}</strong></td>
@@ -453,18 +453,18 @@ function updateStocksTable(stocks) {
 function updatePositions(data) {
     const container = document.getElementById('positions-container');
     const positions = data?.positions || [];
-    
+
     if (positions.length === 0) {
         container.innerHTML = '<div class="no-data">No open positions</div>';
         return;
     }
-    
+
     container.innerHTML = positions.map(pos => {
         const pnlClass = pos.pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
-        const progressPercent = Math.min(100, Math.max(0, 
+        const progressPercent = Math.min(100, Math.max(0,
             ((pos.current_price - pos.entry_price) / (pos.target - pos.entry_price)) * 100
         ));
-        
+
         return `
             <div class="position-card">
                 <div class="position-header">
@@ -492,16 +492,16 @@ function updatePositions(data) {
 function updateTrades(data) {
     const tbody = document.getElementById('trades-body');
     const trades = data?.trades || [];
-    
+
     if (trades.length === 0) {
         tbody.innerHTML = '<tr class="no-data"><td colspan="6">No trades yet</td></tr>';
     } else {
         tbody.innerHTML = trades.map((trade, index) => {
             const pnlClass = trade.pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
-            const statusIcon = trade.exit_reason === 'TARGET' ? '✅' : 
-                               trade.exit_reason === 'STOP_LOSS' ? '🛑' : 
-                               trade.status === 'OPEN' ? '🟡' : '🔵';
-            
+            const statusIcon = trade.exit_reason === 'TARGET' ? '✅' :
+                trade.exit_reason === 'STOP_LOSS' ? '🛑' :
+                    trade.status === 'OPEN' ? '🟡' : '🔵';
+
             return `
                 <tr>
                     <td>${index + 1}</td>
@@ -514,7 +514,7 @@ function updateTrades(data) {
             `;
         }).join('');
     }
-    
+
     // Update summary
     const summary = data?.summary || {};
     document.getElementById('total-pnl').textContent = formatCurrency(summary.total_pnl || 0);
@@ -523,7 +523,7 @@ function updateTrades(data) {
 
 function updateActivityLog(logs) {
     const container = document.getElementById('activity-log');
-    
+
     if (!logs || logs.length === 0) {
         container.innerHTML = `
             <div class="log-entry system">
@@ -533,7 +533,7 @@ function updateActivityLog(logs) {
         `;
         return;
     }
-    
+
     container.innerHTML = logs.map(log => {
         const category = (log.category || 'SYSTEM').toLowerCase();
         return `
@@ -550,7 +550,7 @@ function updateButtonStates(status) {
     const btnStart = document.getElementById('btn-start');
     const btnPause = document.getElementById('btn-pause');
     const btnStop = document.getElementById('btn-stop');
-    
+
     switch (status.toUpperCase()) {
         case 'RUNNING':
             btnStart.disabled = true;
@@ -581,7 +581,7 @@ async function refreshAllData() {
         // Only refresh main dashboard data if that tab is active
         const activeTabEl = document.querySelector('.tab-btn.active');
         const activeTab = activeTabEl ? activeTabEl.dataset.tab : 'dashboard';
-        
+
         if (activeTab === 'dashboard') {
             // Get status
             const statusResp = await getStatus();
@@ -591,37 +591,37 @@ async function refreshAllData() {
                 updateButtonStates(statusResp.data.status || 'STOPPED');
                 updateStartupMode(statusResp.data.startup_mode, statusResp.data.current_mode);
                 updateMarketAnalysis(statusResp.data);
-                
+
                 // Update strategy info from status
                 if (statusResp.data.strategy) {
                     updateStrategyFromStatus(statusResp.data.strategy);
                 }
             }
-            
+
             // Get account info
             const accountResp = await getAccount();
             if (accountResp.success && accountResp.data) {
                 updateAccountInfo(accountResp.data);
             }
-            
+
             // Get selected stocks
             const stocksResp = await getSelectedStocks();
             if (stocksResp.success && stocksResp.data) {
                 updateStocksTable(stocksResp.data.stocks || []);
             }
-            
+
             // Get positions
             const positionsResp = await getPositions();
             if (positionsResp.success && positionsResp.data) {
                 updatePositions(positionsResp.data);
             }
-            
+
             // Get trades
             const tradesResp = await getTrades();
             if (tradesResp.success && tradesResp.data) {
                 updateTrades(tradesResp.data);
             }
-            
+
             // Get activity logs (mini log in dashboard)
             const logsResp = await getLogs();
             if (logsResp.success && logsResp.data) {
@@ -638,7 +638,7 @@ async function refreshLogFile() {
     const lines = select ? select.value : 200;
     const pre = document.getElementById('log-file-content');
     if (!pre) return;
-    
+
     const result = await getLogFile(lines);
     if (result.success && result.data) {
         const logLines = result.data.lines || [];
@@ -658,16 +658,16 @@ async function refreshLogFile() {
 async function refreshReportsList() {
     const container = document.getElementById('reports-list');
     if (!container) return;
-    
+
     const result = await getReports();
     if (result.success && result.data) {
         const reports = result.data.reports || [];
-        
+
         if (reports.length === 0) {
             container.innerHTML = '<p class="no-data">No reports found.</p>';
             return;
         }
-        
+
         container.innerHTML = reports.map(report => `
             <div class="report-item" onclick="loadReportDetail('${report.date}')" data-date="${report.date}">
                 <div class="report-item-header">
@@ -688,18 +688,18 @@ async function loadReportDetail(date) {
     document.querySelectorAll('.report-item').forEach(item => {
         item.classList.toggle('active', item.dataset.date === date);
     });
-    
+
     const detailContainer = document.getElementById('report-detail');
     if (!detailContainer) return;
-    
+
     detailContainer.innerHTML = '<p class="loading">Loading report details...</p>';
-    
+
     const result = await getReportDetail(date);
     if (result.success && result.data) {
         const report = result.data;
         const stats = report.stats || {};
         const pnl = stats.pnl || 0;
-        
+
         detailContainer.innerHTML = `
             <div class="report-summary-grid">
                 <div class="report-stat-box">
@@ -755,12 +755,12 @@ function switchTab(tabId) {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.tab === tabId);
     });
-    
+
     // Update content visibility
     document.querySelectorAll('.tab-content').forEach(content => {
         content.classList.toggle('hidden', content.id !== `tab-${tabId}`);
     });
-    
+
     // Special handling for tabs
     if (tabId === 'logs') {
         refreshLogFile();
@@ -768,9 +768,13 @@ function switchTab(tabId) {
     } else {
         stopLogAutoRefresh();
     }
-    
+
     if (tabId === 'reports') {
         refreshReportsList();
+    }
+
+    if (tabId === 'nifty50') {
+        refreshNifty50Data();
     }
 }
 
@@ -803,7 +807,7 @@ async function handleStart() {
 
 async function handlePause() {
     const btn = document.getElementById('btn-pause');
-    
+
     if (btn.textContent.includes('RESUME')) {
         const result = await resumeBot();
         if (result.success) {
@@ -823,7 +827,7 @@ async function handleStop() {
     if (!confirm('Are you sure you want to stop the bot? All positions will be squared off.')) {
         return;
     }
-    
+
     const result = await stopBot();
     if (result.success) {
         addLogEntry('SYSTEM', `Bot stopped. Final P&L: ${formatCurrency(result.data?.final_pnl || 0)}`);
@@ -839,7 +843,7 @@ async function handleSaveConfig() {
         'strategy.target_percent': parseFloat(document.getElementById('target').value),
         'strategy.max_trades_per_day': parseInt(document.getElementById('max-trades').value)
     };
-    
+
     const result = await updateConfig(updates);
     if (result.success) {
         addLogEntry('CONFIG', 'Configuration saved');
@@ -855,7 +859,7 @@ async function handleModeToggle(mode) {
             return;
         }
     }
-    
+
     const result = await switchMode(mode);
     if (result.success) {
         updateModeBadge(mode);
@@ -874,7 +878,7 @@ async function loadStrategies() {
         const strategies = result.data.strategies || [];
         const active = result.data.active;
         const canSwitch = result.data.can_switch;
-        
+
         // Clear and rebuild options
         select.innerHTML = '';
         strategies.forEach(s => {
@@ -886,14 +890,14 @@ async function loadStrategies() {
             }
             select.appendChild(option);
         });
-        
+
         // Update active strategy display
         const activeStrategy = strategies.find(s => s.name === active || s.is_active);
         if (activeStrategy) {
             document.getElementById('active-strategy-name').textContent = activeStrategy.display_name || activeStrategy.name;
             document.getElementById('strategy-description').textContent = activeStrategy.description || '';
         }
-        
+
         // Update switch button state
         updateStrategySwitchButton(canSwitch, select.value, active);
     }
@@ -902,28 +906,28 @@ async function loadStrategies() {
 function handleStrategySelectChange(e) {
     const selectedValue = e.target.value;
     const activeStrategyName = document.getElementById('active-strategy-name').textContent;
-    
+
     // Get current active strategy name from data attribute or infer
     const strategies = Array.from(document.getElementById('strategy-select').options);
     const currentActive = strategies.find(opt => opt.textContent === activeStrategyName)?.value;
-    
+
     // Enable switch button if selection is different from active
     const switchBtn = document.getElementById('btn-switch-strategy');
     const isActive = selectedValue === currentActive;
-    
+
     // Get can_switch state from last status update (stored globally)
     const canSwitch = window._canSwitchStrategy !== false;
-    
+
     switchBtn.disabled = isActive || !canSwitch;
 }
 
 function updateStrategySwitchButton(canSwitch, selected, active) {
     const switchBtn = document.getElementById('btn-switch-strategy');
     const warning = document.getElementById('strategy-warning');
-    
+
     // Note: canSwitch state is checked fresh from API before switching
     // to avoid stale state issues between status polls
-    
+
     if (!canSwitch) {
         switchBtn.disabled = true;
         warning.classList.remove('hidden');
@@ -942,15 +946,15 @@ async function handleSwitchStrategy() {
         return;
     }
     _switchingStrategy = true;
-    
+
     const select = document.getElementById('strategy-select');
     const strategyName = select.value;
     const strategyDisplayName = select.options[select.selectedIndex]?.textContent || strategyName;
-    
+
     const switchBtn = document.getElementById('btn-switch-strategy');
     switchBtn.disabled = true;
     switchBtn.textContent = '⏳ Checking...';
-    
+
     try {
         // Fetch fresh status to check if switching is allowed (avoid stale state)
         const freshStatus = await getStrategies();
@@ -960,23 +964,23 @@ async function handleSwitchStrategy() {
             switchBtn.disabled = false;
             return;
         }
-        
+
         if (!confirm(`Switch to "${strategyDisplayName}" strategy?`)) {
             switchBtn.textContent = '🔄 Switch';
             switchBtn.disabled = false;
             return;
         }
-        
+
         switchBtn.textContent = '⏳ Switching...';
-    
+
         const result = await switchStrategy(strategyName);
-        
+
         if (result.success) {
             addLogEntry('STRATEGY', `Switched to ${strategyDisplayName}`);
-            
+
             // Update UI
             document.getElementById('active-strategy-name').textContent = strategyDisplayName;
-            
+
             // Get description from option or fetch
             const strategies = await getStrategies();
             if (strategies.success && strategies.data) {
@@ -985,7 +989,7 @@ async function handleSwitchStrategy() {
                     document.getElementById('strategy-description').textContent = newActive.description || '';
                 }
             }
-            
+
             switchBtn.textContent = '✅ Switched!';
             setTimeout(() => {
                 switchBtn.textContent = '🔄 Switch';
@@ -1008,18 +1012,18 @@ async function handleSwitchStrategy() {
 
 function updateStrategyFromStatus(strategyInfo) {
     if (!strategyInfo) return;
-    
+
     const nameEl = document.getElementById('active-strategy-name');
     const select = document.getElementById('strategy-select');
-    
+
     if (nameEl && strategyInfo.display_name) {
         nameEl.textContent = strategyInfo.display_name;
     }
-    
+
     if (select && strategyInfo.active) {
         select.value = strategyInfo.active;
     }
-    
+
     // Update switch button based on can_switch
     updateStrategySwitchButton(
         strategyInfo.can_switch !== false,
@@ -1032,12 +1036,12 @@ async function exitPosition(symbol) {
     if (!confirm(`Exit position for ${symbol}?`)) {
         return;
     }
-    
+
     const result = await fetchAPI('/position/exit', {
         method: 'POST',
         body: JSON.stringify({ symbol })
     });
-    
+
     if (result.success) {
         addLogEntry('TRADE', `Exit requested for ${symbol}`);
         refreshAllData();
@@ -1074,28 +1078,28 @@ function initEventListeners() {
     document.getElementById('btn-stop').addEventListener('click', handleStop);
     document.getElementById('btn-refresh').addEventListener('click', refreshAllData);
 
-    
+
     // Tabs
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
-    
+
     // Log controls
     document.getElementById('btn-refresh-logs')?.addEventListener('click', refreshLogFile);
     document.getElementById('log-auto-refresh')?.addEventListener('change', (e) => {
         if (e.target.checked) startLogAutoRefresh();
         else stopLogAutoRefresh();
     });
-    
+
     // Config
     document.getElementById('save-config')?.addEventListener('click', handleSaveConfig);
     document.getElementById('mode-paper')?.addEventListener('click', () => handleModeToggle('paper'));
     document.getElementById('mode-live')?.addEventListener('click', () => handleModeToggle('live'));
-    
+
     // Strategy
     document.getElementById('btn-switch-strategy')?.addEventListener('click', handleSwitchStrategy);
     document.getElementById('strategy-select')?.addEventListener('change', handleStrategySelectChange);
-    
+
     // Modal
     document.querySelector('.modal-close')?.addEventListener('click', closeSettingsModal);
     document.getElementById('settings-modal')?.addEventListener('click', (e) => {
@@ -1108,41 +1112,269 @@ async function loadInitialConfig() {
     if (result.success && result.data) {
         const sl = document.getElementById('stop-loss');
         if (sl) sl.value = result.data.strategy?.stop_loss_percent || 0.5;
-        
+
         const tgt = document.getElementById('target');
         if (tgt) tgt.value = result.data.strategy?.target_percent || 1.0;
-        
+
         const maxT = document.getElementById('max-trades');
         if (maxT) maxT.value = result.data.strategy?.max_trades_per_day || 3;
-        
+
         const mode = result.data.trading_mode || 'paper';
         const paperBtn = document.getElementById('mode-paper');
         const liveBtn = document.getElementById('mode-live');
         if (paperBtn) paperBtn.classList.toggle('active', mode === 'paper');
         if (liveBtn) liveBtn.classList.toggle('active', mode === 'live');
     }
-    
+
     // Load available strategies
     await loadStrategies();
+}
+
+// ==================== Nifty 50 Data ====================
+
+async function getNifty50Data() {
+    return fetchAPI('/nifty50/preopen');
+}
+
+async function getWatchlistData() {
+    return fetchAPI('/nifty50/watchlist');
+}
+
+async function refreshWatchlistData() {
+    const bullishBody = document.getElementById('watchlist-bullish-body');
+    const bearishBody = document.getElementById('watchlist-bearish-body');
+    const statusDiv = document.getElementById('watchlist-status');
+
+    if (!bullishBody || !bearishBody) return;
+
+    // Set loading state
+    const loadingRow = '<tr><td colspan="3" class="px-3 py-4 text-center text-text-muted">Loading...</td></tr>';
+    bullishBody.innerHTML = loadingRow;
+    bearishBody.innerHTML = loadingRow;
+
+    try {
+        const result = await getWatchlistData();
+
+        if (result.success && result.data) {
+            const data = result.data.data || result.data; // Handle wrapped or direct data
+
+            // Only update if we have stocks data
+            const stocks = data.stocks || {};
+            const bullishStocks = stocks.bullish || [];
+            const bearishStocks = stocks.bearish || [];
+
+            // Update Status
+            if (statusDiv) {
+                const trend = data.nifty_trend || 'WAITING';
+                const activeSet = data.active_set || 'BOTH';
+                // Clean up reason text if it's too long or has newlines
+                const reason = (data.filter_reason || 'Waiting for market open...').split('\n')[0];
+
+                let statusColor = 'text-text-secondary';
+                if (trend === 'BULLISH') statusColor = 'text-success';
+                if (trend === 'BEARISH') statusColor = 'text-danger';
+
+                statusDiv.innerHTML = `
+                    <span class="font-bold ${statusColor}">TREND: ${trend}</span> | 
+                    Active: <span class="font-medium">${activeSet}</span> | 
+                    <span class="text-text-muted text-xs">${reason}</span>
+                `;
+            }
+
+            // Render Bullish Stocks
+            if (bullishStocks.length > 0) {
+                bullishBody.innerHTML = bullishStocks.map(stock => {
+                    const price = stock.last_price || stock.iep || stock.ltp || 0;
+                    const changeClass = (stock.gap_percent || 0) > 0 ? 'text-success' : 'text-danger';
+                    return `
+                        <tr class="border-b border-border-subtle hover:bg-bg-elevated/50">
+                            <td class="px-3 py-2 font-medium">${(stock.symbol || 'N/A').replace('-EQ', '')}</td>
+                            <td class="px-3 py-2 text-right ${changeClass} font-mono">${(stock.gap_percent || 0).toFixed(2)}%</td>
+                            <td class="px-3 py-2 text-right font-mono">₹${parseFloat(price).toLocaleString('en-IN')}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                bullishBody.innerHTML = '<tr><td colspan="3" class="px-3 py-4 text-center text-text-muted">No bullish candidates</td></tr>';
+            }
+
+            // Render Bearish Stocks
+            if (bearishStocks.length > 0) {
+                bearishBody.innerHTML = bearishStocks.map(stock => {
+                    const price = stock.last_price || stock.iep || stock.ltp || 0;
+                    const changeClass = (stock.gap_percent || 0) > 0 ? 'text-success' : 'text-danger';
+                    return `
+                        <tr class="border-b border-border-subtle hover:bg-bg-elevated/50">
+                            <td class="px-3 py-2 font-medium">${(stock.symbol || 'N/A').replace('-EQ', '')}</td>
+                            <td class="px-3 py-2 text-right ${changeClass} font-mono">${(stock.gap_percent || 0).toFixed(2)}%</td>
+                            <td class="px-3 py-2 text-right font-mono">₹${parseFloat(price).toLocaleString('en-IN')}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                bearishBody.innerHTML = '<tr><td colspan="3" class="px-3 py-4 text-center text-text-muted">No bearish candidates</td></tr>';
+            }
+
+        } else {
+            // Check if it's just that the file doesn't exist yet (first run)
+            if (statusDiv) statusDiv.innerHTML = '<span class="text-warning">Watchlist not yet generated (waiting for 9:10 AM update)</span>';
+            bullishBody.innerHTML = '<tr><td colspan="3" class="px-3 py-4 text-center text-text-muted">No data available yet</td></tr>';
+            bearishBody.innerHTML = '<tr><td colspan="3" class="px-3 py-4 text-center text-text-muted">No data available yet</td></tr>';
+        }
+    } catch (error) {
+        console.error('Error fetching watchlist:', error);
+        if (bullishBody) bullishBody.innerHTML = '<tr><td colspan="3" class="text-center py-2 text-danger">Error loading data</td></tr>';
+        if (bearishBody) bearishBody.innerHTML = '<tr><td colspan="3" class="text-center py-2 text-danger">Error loading data</td></tr>';
+    }
+}
+
+async function refreshNifty50Data() {
+    try {
+        // Refresh Watchlist (parallel)
+        refreshWatchlistData();
+
+        const tbody = document.getElementById('nifty50-body');
+        const mobileList = document.getElementById('nifty50-mobile-list'); // New Mobile List Container
+
+        if (!tbody) return;
+
+        // Show loading state
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-text-muted">Loading Nifty 50 data...</td></tr>';
+        if (mobileList) mobileList.innerHTML = '<div class="text-center py-8 text-text-muted">Loading...</div>';
+
+        const result = await getNifty50Data();
+
+        if (result.success && result.data) {
+            const stocks = result.data.stocks || [];
+            const metadata = result.data.metadata || {};
+
+            // Update metadata
+            const totalEl = document.getElementById('nifty50-total');
+            if (totalEl) totalEl.textContent = metadata.total_stocks || stocks.length;
+
+            const updatedEl = document.getElementById('nifty50-updated');
+            if (updatedEl) updatedEl.textContent = metadata.last_updated || 'Unknown';
+
+            const sourceEl = document.getElementById('nifty50-source');
+            if (sourceEl) sourceEl.textContent = metadata.source || 'NSE API';
+
+            const timeEl = document.getElementById('nifty50-update-time');
+            if (timeEl) timeEl.textContent = metadata.update_time || '09:10 AM IST';
+
+            // Update table
+            if (stocks.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-text-muted">No Nifty 50 data available yet. Data will be fetched at 9:10 AM.</td></tr>';
+                if (mobileList) mobileList.innerHTML = '<div class="text-center py-8 text-text-muted">No data available yet.</div>';
+                return;
+            }
+
+            // Render Desktop Table
+            tbody.innerHTML = stocks.map((stock, index) => {
+                const hasToken = stock.token && stock.token !== '';
+                const statusIcon = hasToken ? '✅' : '⚠️';
+                const statusClass = hasToken ? 'text-success' : 'text-warning';
+
+                // Format numbers
+                const iep = stock.iep ? `₹${parseFloat(stock.iep).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '--';
+                const changePercent = stock.change_percent ? parseFloat(stock.change_percent).toFixed(2) : '0.00';
+                const gapPercent = stock.gap_percent ? parseFloat(stock.gap_percent).toFixed(2) : '0.00';
+                const volume = stock.volume ? parseInt(stock.volume).toLocaleString('en-IN') : '--';
+
+                // Color classes
+                const changeClass = parseFloat(changePercent) > 0 ? 'text-success' : parseFloat(changePercent) < 0 ? 'text-danger' : 'text-text-secondary';
+                const gapType = stock.gap_type || 'NEUTRAL';
+                const gapBadgeClass = gapType === 'BULLISH' ? 'bg-success/20 text-success' : gapType === 'BEARISH' ? 'bg-danger/20 text-danger' : 'bg-bg-elevated text-text-muted';
+
+                return `
+                    <tr class="border-b border-border-subtle hover:bg-bg-elevated/50 transition-colors group">
+                        <td class="px-3 py-2 text-text-secondary hidden md:table-cell font-mono text-xs opacity-50 group-hover:opacity-100">${stock.rank || index + 1}</td>
+                        <td class="px-3 py-2">
+                            <span class="font-medium text-text-primary block">${(stock.symbol || 'N/A').replace('-EQ', '')}</span>
+                        </td>
+                        <td class="px-3 py-2 text-right font-mono text-sm text-text-primary">${iep}</td>
+                        <td class="px-3 py-2 text-right font-mono text-sm ${changeClass}">
+                            ${parseFloat(changePercent) > 0 ? '+' : ''}${changePercent}%
+                        </td>
+                        <td class="px-3 py-2 text-right">
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${gapBadgeClass}">
+                                ${parseFloat(gapPercent) > 0 ? '+' : ''}${gapPercent}%
+                            </span>
+                        </td>
+                        <td class="px-3 py-2 text-right font-mono text-xs text-text-secondary hidden md:table-cell">${volume}</td>
+                        <td class="px-3 py-2 text-center">
+                            <span class="${statusClass} text-xs" title="${stock.token || 'No Token'}">${statusIcon}</span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Render Mobile List Cards
+            if (mobileList) {
+                mobileList.innerHTML = stocks.map((stock, index) => {
+                    const iep = stock.iep ? `₹${parseFloat(stock.iep).toLocaleString('en-IN')}` : '--';
+                    const changePercent = stock.change_percent ? parseFloat(stock.change_percent).toFixed(2) : '0.00';
+                    const gapPercent = stock.gap_percent ? parseFloat(stock.gap_percent).toFixed(2) : '0.00';
+
+                    const changeClass = parseFloat(changePercent) > 0 ? 'text-success' : parseFloat(changePercent) < 0 ? 'text-danger' : 'text-text-muted';
+                    const gapClass = parseFloat(gapPercent) > 0 ? 'text-success' : parseFloat(gapPercent) < 0 ? 'text-danger' : 'text-text-muted';
+
+                    return `
+                        <div class="card p-3 bg-bg-surface border border-border-subtle shadow-sm">
+                            <div class="flex justify-between items-start mb-2">
+                                <div>
+                                    <h4 class="font-semibold text-text-primary text-base">${(stock.symbol || 'N/A').replace('-EQ', '')}</h4>
+                                    <span class="text-xs text-text-muted">Vol: ${parseInt(stock.volume || 0).toLocaleString()}</span>
+                                </div>
+                                <div class="text-right">
+                                    <span class="font-mono text-lg font-medium text-text-primary">${iep}</span>
+                                </div>
+                            </div>
+                            <div class="flex justify-between items-center text-sm border-t border-border-subtle pt-2 mt-1">
+                                <div class="flex flex-col">
+                                    <span class="text-xs text-text-muted">Change</span>
+                                    <span class="font-mono ${changeClass}">${changePercent}%</span>
+                                </div>
+                                <div class="flex flex-col text-right">
+                                    <span class="text-xs text-text-muted">Gap</span>
+                                    <span class="font-mono ${gapClass} font-medium bg-bg-elevated px-1 rounded">${gapPercent}%</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+        } else {
+            const errorMsg = `<tr><td colspan="7" class="text-center py-8 text-danger">Error loading data: ${result.error || 'Unknown error'}</td></tr>`;
+            tbody.innerHTML = errorMsg;
+            if (mobileList) mobileList.innerHTML = `<div class="p-4 text-center text-danger">Error loading data</div>`;
+        }
+    } catch (error) {
+        console.error('Error in refreshNifty50Data:', error);
+        const tbody = document.getElementById('nifty50-body');
+        const mobileList = document.getElementById('nifty50-mobile-list');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-danger">Application Error: ${error.message}</td></tr>`;
+        if (mobileList) mobileList.innerHTML = `<div class="p-4 text-center text-danger">Application Error: ${error.message}</div>`;
+    }
 }
 
 function init() {
     // Update time every second
     updateTime();
     setInterval(updateTime, 1000);
-    
+
     // Initialize event listeners
     initEventListeners();
-    
+
     // Load initial config
     loadInitialConfig();
-    
+
     // Initial data load
     refreshAllData();
-    
+
     // Auto-refresh every 5 seconds
     refreshInterval = setInterval(refreshAllData, 5000);
-    
+
     console.log('📊 Trading Bot Dashboard initialized');
 }
 
