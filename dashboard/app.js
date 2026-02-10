@@ -628,6 +628,9 @@ async function refreshAllData() {
                 updateActivityLog(logsResp.data.logs || []);
             }
         }
+
+        // Nifty50 data is now handled by separate polling mechanism in startNifty50Polling()
+        // to avoid conflicts with the 5-second dashboard refresh
     } catch (error) {
         console.error('Error refreshing data:', error);
     }
@@ -774,7 +777,11 @@ function switchTab(tabId) {
     }
 
     if (tabId === 'nifty50') {
-        refreshNifty50Data();
+        // Start Nifty50 polling when tab is active
+        startNifty50Polling();
+    } else {
+        // Stop Nifty50 polling when switching away from the tab
+        stopNifty50Polling();
     }
 }
 
@@ -1228,19 +1235,19 @@ async function refreshWatchlistData() {
     }
 }
 
-async function refreshNifty50Data() {
+async function refreshNifty50Data(isInitialLoad = false) {
     try {
         // Refresh Watchlist (parallel)
         refreshWatchlistData();
 
-        const tbody = document.getElementById('nifty50-body');
-        const mobileList = document.getElementById('nifty50-mobile-list'); // New Mobile List Container
+        const cardGrid = document.getElementById('nifty50-card-grid');
 
-        if (!tbody) return;
+        if (!cardGrid) return;
 
-        // Show loading state
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-text-muted">Loading Nifty 50 data...</td></tr>';
-        if (mobileList) mobileList.innerHTML = '<div class="text-center py-8 text-text-muted">Loading...</div>';
+        // Only show loading state on initial load, not on refresh
+        if (isInitialLoad) {
+            cardGrid.innerHTML = '<div class="text-center py-8 text-text-muted col-span-full">Loading Nifty 50 data...</div>';
+        }
 
         const result = await getNifty50Data();
 
@@ -1261,15 +1268,14 @@ async function refreshNifty50Data() {
             const timeEl = document.getElementById('nifty50-update-time');
             if (timeEl) timeEl.textContent = metadata.update_time || '09:10 AM IST';
 
-            // Update table
+            // Update card grid
             if (stocks.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-text-muted">No Nifty 50 data available yet. Data will be fetched at 9:10 AM.</td></tr>';
-                if (mobileList) mobileList.innerHTML = '<div class="text-center py-8 text-text-muted">No data available yet.</div>';
+                cardGrid.innerHTML = '<div class="text-center py-8 text-text-muted col-span-full">No Nifty 50 data available yet. Data will be fetched at 9:10 AM.</div>';
                 return;
             }
 
-            // Render Desktop Table
-            tbody.innerHTML = stocks.map((stock, index) => {
+            // Render Card Grid
+            cardGrid.innerHTML = stocks.map((stock, index) => {
                 const hasToken = stock.token && stock.token !== '';
                 const statusIcon = hasToken ? '✅' : '⚠️';
                 const statusClass = hasToken ? 'text-success' : 'text-warning';
@@ -1286,76 +1292,134 @@ async function refreshNifty50Data() {
                 const gapBadgeClass = gapType === 'BULLISH' ? 'bg-success/20 text-success' : gapType === 'BEARISH' ? 'bg-danger/20 text-danger' : 'bg-bg-elevated text-text-muted';
 
                 return `
-                    <tr class="border-b border-border-subtle hover:bg-bg-elevated/50 transition-colors group">
-                        <td class="px-3 py-2 text-text-secondary hidden md:table-cell font-mono text-xs opacity-50 group-hover:opacity-100">${stock.rank || index + 1}</td>
-                        <td class="px-3 py-2">
-                            <span class="font-medium text-text-primary block">${(stock.symbol || 'N/A').replace('-EQ', '')}</span>
-                        </td>
-                        <td class="px-3 py-2 text-right font-mono text-sm text-text-primary">${iep}</td>
-                        <td class="px-3 py-2 text-right font-mono text-sm ${changeClass}">
-                            ${parseFloat(changePercent) > 0 ? '+' : ''}${changePercent}%
-                        </td>
-                        <td class="px-3 py-2 text-right">
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${gapBadgeClass}">
-                                ${parseFloat(gapPercent) > 0 ? '+' : ''}${gapPercent}%
-                            </span>
-                        </td>
-                        <td class="px-3 py-2 text-right font-mono text-xs text-text-secondary hidden md:table-cell">${volume}</td>
-                        <td class="px-3 py-2 text-center">
-                            <span class="${statusClass} text-xs" title="${stock.token || 'No Token'}">${statusIcon}</span>
-                        </td>
-                    </tr>
+                    <div class="card p-3 bg-bg-surface border border-border-subtle shadow-sm hover:shadow-md transition-all duration-200 hover:bg-bg-elevated/50">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-text-secondary font-mono text-xs opacity-50">${stock.rank || index + 1}</span>
+                                <h4 class="font-semibold text-text-primary text-base">${(stock.symbol || 'N/A').replace('-EQ', '')}</h4>
+                                <span class="${statusClass} text-xs" title="${stock.token || 'No Token'}">${statusIcon}</span>
+                            </div>
+                            <div class="text-right">
+                                <span class="font-mono text-lg font-medium text-text-primary">${iep}</span>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center text-sm border-t border-border-subtle pt-2 mt-1">
+                            <div class="flex flex-col">
+                                <span class="text-xs text-text-muted">Change</span>
+                                <span class="font-mono ${changeClass} font-medium">
+                                    ${parseFloat(changePercent) > 0 ? '+' : ''}${changePercent}%
+                                </span>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-xs text-text-muted">Gap</span>
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${gapBadgeClass}">
+                                    ${parseFloat(gapPercent) > 0 ? '+' : ''}${gapPercent}%
+                                </span>
+                            </div>
+                            <div class="flex flex-col text-right">
+                                <span class="text-xs text-text-muted">Volume</span>
+                                <span class="font-mono text-xs text-text-secondary">${volume}</span>
+                            </div>
+                        </div>
+                    </div>
                 `;
             }).join('');
 
-            // Render Mobile List Cards
-            if (mobileList) {
-                mobileList.innerHTML = stocks.map((stock, index) => {
-                    const iep = stock.iep ? `₹${parseFloat(stock.iep).toLocaleString('en-IN')}` : '--';
-                    const changePercent = stock.change_percent ? parseFloat(stock.change_percent).toFixed(2) : '0.00';
-                    const gapPercent = stock.gap_percent ? parseFloat(stock.gap_percent).toFixed(2) : '0.00';
-
-                    const changeClass = parseFloat(changePercent) > 0 ? 'text-success' : parseFloat(changePercent) < 0 ? 'text-danger' : 'text-text-muted';
-                    const gapClass = parseFloat(gapPercent) > 0 ? 'text-success' : parseFloat(gapPercent) < 0 ? 'text-danger' : 'text-text-muted';
-
-                    return `
-                        <div class="card p-3 bg-bg-surface border border-border-subtle shadow-sm">
-                            <div class="flex justify-between items-start mb-2">
-                                <div>
-                                    <h4 class="font-semibold text-text-primary text-base">${(stock.symbol || 'N/A').replace('-EQ', '')}</h4>
-                                    <span class="text-xs text-text-muted">Vol: ${parseInt(stock.volume || 0).toLocaleString()}</span>
-                                </div>
-                                <div class="text-right">
-                                    <span class="font-mono text-lg font-medium text-text-primary">${iep}</span>
-                                </div>
-                            </div>
-                            <div class="flex justify-between items-center text-sm border-t border-border-subtle pt-2 mt-1">
-                                <div class="flex flex-col">
-                                    <span class="text-xs text-text-muted">Change</span>
-                                    <span class="font-mono ${changeClass}">${changePercent}%</span>
-                                </div>
-                                <div class="flex flex-col text-right">
-                                    <span class="text-xs text-text-muted">Gap</span>
-                                    <span class="font-mono ${gapClass} font-medium bg-bg-elevated px-1 rounded">${gapPercent}%</span>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }).join('');
-            }
-
         } else {
-            const errorMsg = `<tr><td colspan="7" class="text-center py-8 text-danger">Error loading data: ${result.error || 'Unknown error'}</td></tr>`;
-            tbody.innerHTML = errorMsg;
-            if (mobileList) mobileList.innerHTML = `<div class="p-4 text-center text-danger">Error loading data</div>`;
+            if (isInitialLoad) {
+                cardGrid.innerHTML = `<div class="p-4 text-center text-danger col-span-full">Error loading data: ${result.error || 'Unknown error'}</div>`;
+            }
         }
     } catch (error) {
         console.error('Error in refreshNifty50Data:', error);
-        const tbody = document.getElementById('nifty50-body');
-        const mobileList = document.getElementById('nifty50-mobile-list');
-        if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-danger">Application Error: ${error.message}</td></tr>`;
-        if (mobileList) mobileList.innerHTML = `<div class="p-4 text-center text-danger">Application Error: ${error.message}</div>`;
+        const cardGrid = document.getElementById('nifty50-card-grid');
+        if (cardGrid && isInitialLoad) {
+            cardGrid.innerHTML = `<div class="p-4 text-center text-danger col-span-full">Application Error: ${error.message}</div>`;
+        }
     }
+}
+
+// ==================== Market Hours Check ====================
+
+function isMarketHours() {
+    // Get current time in IST (Indian Standard Time)
+    const now = new Date();
+    const istTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    const hours = istTime.getHours();
+    const minutes = istTime.getMinutes();
+    const currentTime = hours * 60 + minutes; // Convert to minutes since midnight
+
+    // Market hours: 9:00 AM to 3:30 PM IST
+    const marketOpen = 9 * 60;      // 9:00 AM = 540 minutes
+    const marketClose = 15 * 60 + 30; // 3:30 PM = 930 minutes
+
+    return currentTime >= marketOpen && currentTime <= marketClose;
+}
+
+function getNextMarketOpenTime() {
+    const now = new Date();
+    const istTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    const marketOpen = new Date(istTime);
+    marketOpen.setHours(9, 0, 0, 0);
+
+    // If it's already past 9:00 AM, next open is tomorrow
+    if (istTime > marketOpen) {
+        marketOpen.setDate(marketOpen.getDate() + 1);
+    }
+
+    return marketOpen;
+}
+
+// ==================== Nifty50 Polling ====================
+
+let nifty50PollingInterval = null;
+
+function startNifty50Polling() {
+    // Stop any existing polling
+    stopNifty50Polling();
+
+    // Only start polling if in market hours
+    if (isMarketHours()) {
+        console.log('📊 Starting Nifty50 polling (market hours)');
+
+        // Initial load with loading state
+        refreshNifty50Data(true);
+
+        // Poll every 20 seconds during market hours
+        nifty50PollingInterval = setInterval(() => {
+            if (isMarketHours()) {
+                // Smooth update without loading state
+                refreshNifty50Data(false);
+            } else {
+                // Stop polling when market closes
+                stopNifty50Polling();
+                console.log('📊 Stopped Nifty50 polling (market closed)');
+            }
+        }, 20000); // 20 seconds
+    } else {
+        console.log('📊 Market closed - Nifty50 polling not started');
+        // Just load data once without polling
+        refreshNifty50Data(true);
+    }
+}
+
+function stopNifty50Polling() {
+    if (nifty50PollingInterval) {
+        clearInterval(nifty50PollingInterval);
+        nifty50PollingInterval = null;
+    }
+}
+
+function scheduleNextMarketPolling() {
+    const nextOpen = getNextMarketOpenTime();
+    const now = new Date();
+    const delay = nextOpen - now;
+
+    console.log(`📊 Scheduled Nifty50 polling to resume at ${nextOpen.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
+
+    setTimeout(() => {
+        startNifty50Polling();
+    }, delay);
 }
 
 function init() {
@@ -1369,11 +1433,28 @@ function init() {
     // Load initial config
     loadInitialConfig();
 
-    // Initial data load
+    // Initial data load for dashboard
     refreshAllData();
 
-    // Auto-refresh every 5 seconds
-    refreshInterval = setInterval(refreshAllData, 5000);
+    // Start Nifty50 polling based on market hours
+    startNifty50Polling();
+
+    // Check every minute if we need to start/stop polling (for market open/close transitions)
+    setInterval(() => {
+        const activeTabEl = document.querySelector('.tab-btn.active');
+        const activeTab = activeTabEl ? activeTabEl.dataset.tab : 'dashboard';
+
+        if (activeTab === 'nifty50') {
+            if (isMarketHours() && !nifty50PollingInterval) {
+                // Market just opened, start polling
+                startNifty50Polling();
+            } else if (!isMarketHours() && nifty50PollingInterval) {
+                // Market just closed, stop polling and schedule next
+                stopNifty50Polling();
+                scheduleNextMarketPolling();
+            }
+        }
+    }, 60000); // Check every minute
 
     console.log('📊 Trading Bot Dashboard initialized');
 }
