@@ -615,7 +615,13 @@ class LiveIndicatorManager:
             
             calculated = TechnicalIndicators.calculate_all_indicators(live_df)
             latest = get_latest_indicators(calculated)
-            
+
+            # [FIX] Add current candle OHLC to indicators for opening range tracking
+            latest['open'] = current['open']
+            latest['high'] = current['high']
+            latest['low'] = current['low']
+            latest['close'] = current['close']
+
             latest['vwap'] = cumulative_vwap
             latest['candle_data'] = to_native(self.get_closed_candle_data(symbol))
             return latest
@@ -627,6 +633,9 @@ class LiveIndicatorManager:
     def _get_empty_indicators(self, ltp: float, vwap: float = 0) -> Dict:
         """Utility to return a default indicators dict"""
         return {
+            "open": ltp,
+            "high": ltp,
+            "low": ltp,
             "close": ltp,
             "rsi": 50,
             "vwap": vwap or ltp,

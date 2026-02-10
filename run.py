@@ -21,13 +21,19 @@ def setup_single_instance():
                 # Windows-specific reliable check
                 import subprocess
                 try:
+                    # Add timeout to prevent hanging if tasklist is unresponsive
                     output = subprocess.check_output(
                         ['tasklist', '/FI', f'PID eq {old_pid}', '/NH'],
                         creationflags=0x08000000,
-                        stderr=subprocess.DEVNULL
+                        stderr=subprocess.DEVNULL,
+                        timeout=5  # 5 seconds timeout
                     ).decode('utf-8', errors='ignore')
                     is_running = str(old_pid) in output
-                except Exception:
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"⚠️ PID check timed out for {old_pid}. Assuming process is not running.")
+                    is_running = False
+                except Exception as e:
+                    logger.warning(f"⚠️ PID check failed: {e}. Assuming process is not running.")
                     is_running = False
             else:
                 # Unix-specific reliable check
