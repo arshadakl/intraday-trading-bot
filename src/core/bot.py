@@ -342,6 +342,20 @@ class TradingBot:
         self._log_activity("ANALYSIS", "Starting market analysis")
         
         try:
+            # [FIX] Check if using 3-Minute Strategy and use pre-open gap picker
+            if self.strategy and self.strategy.name == "three_minute":
+                logger.info("🎯 3-Minute Strategy detected - Using NSE Pre-Open Gap Picker")
+                from src.analysis.base_stock_picker import StockPickerRegistry
+                picker = StockPickerRegistry.get_picker("preopen_gap")
+                if picker:
+                    success = self._repick_with_preopen_gap_picker(picker)
+                    if success:
+                        return self.selected_stocks
+                    else:
+                        logger.warning("⚠️ Pre-open gap picker failed, falling back to standard analysis")
+                else:
+                    logger.warning("⚠️ Pre-open gap picker not found, falling back to standard analysis")
+            
             # Get all Nifty 50 stocks with their technical indicators
             logger.info("🔍 Analyzing Nifty 50 stocks...")
             analyzed_stocks = self.pre_market_analyzer.analyze_all_stocks()
@@ -1265,6 +1279,13 @@ class TradingBot:
         # Reset strategy state
         if self.strategy and hasattr(self.strategy, 'reset_daily'):
             self.strategy.reset_daily()
+        
+        # [FIX] Re-set gap candidates for 3-Minute Strategy after reset
+        # This ensures gap_signals are preserved for trading
+        if (self.strategy and self.strategy.name == "three_minute" and 
+            self.selected_stocks and hasattr(self.strategy, 'set_gap_candidates')):
+            logger.info("🎯 Re-setting gap candidates for 3-Minute Strategy after daily reset")
+            self.strategy.set_gap_candidates(self.selected_stocks)
         
         # Reset risk manager
         if self.risk_manager:
