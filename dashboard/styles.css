@@ -1824,3 +1824,90 @@ body {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+/* Stock Chart Styles */
+.stock-charts-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+}
+
+.stock-chart-wrapper {
+  background: rgba(44, 44, 46, 0.5);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  border: 1px solid rgba(56, 56, 58, 0.5);
+  width: 100%;
+}
+
+.stock-chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(56, 56, 58, 0.5);
+}
+
+.stock-chart-symbol {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: rgb(245, 245, 247);
+}
+
+.stock-chart-legend {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.75rem;
+}
+
+.stock-chart-legend span {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.stock-chart-container {
+  height: 300px;
+  width: 100%;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+/* Chart Legend Colors */
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: rgb(161, 161, 166);
+}
+
+.legend-color {
+  display: inline-block;
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.legend-color.entry {
+  background-color: #22c55e;
+}
+
+.legend-color.target {
+  background-color: #3b82f6;
+}
+
+.legend-color.stoploss {
+  background-color: #ef4444;
+}
+
+/* Chart tooltip custom styling */
+.stock-chart-tooltip {
+  background: rgba(0, 0, 0, 0.9);
+  border: 1px solid rgba(56, 56, 58, 0.8);
+  border-radius: 0.375rem;
+  padding: 0.5rem;
+  font-size: 0.75rem;
+  color: rgb(245, 245, 247);
+}

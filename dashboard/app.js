@@ -118,6 +118,292 @@ async function updateConfig(updates) {
     });
 }
 
+async function getStockHistory(symbol) {
+    return fetchAPI(`/stocks/${symbol}/history`);
+}
+
+// ==================== Stock Chart Management ====================
+
+// Store chart instances and their data
+const stockCharts = {};
+const stockPriceHistory = {};
+
+async function initializeStockCharts(stocks) {
+    if (!stocks || stocks.length === 0) return;
+    
+    const container = document.getElementById('stock-charts-container');
+    if (!container) return;
+    
+    // Clear container if no stocks
+    if (stocks.length === 0) {
+        container.innerHTML = '<div class="text-center py-8 text-text-muted">Select stocks to view charts</div>';
+        return;
+    }
+    
+    // Initialize charts for each stock
+    for (const stock of stocks) {
+        const symbol = stock.symbol;
+        
+        // Skip if chart already exists
+        if (stockCharts[symbol]) continue;
+        
+        // Create chart container
+        const chartWrapper = document.createElement('div');
+        chartWrapper.className = 'stock-chart-wrapper';
+        chartWrapper.id = `chart-wrapper-${symbol}`;
+        
+        const cleanSymbol = symbol.replace('-EQ', '');
+        chartWrapper.innerHTML = `
+            <div class="stock-chart-header">
+                <span class="stock-chart-symbol">${cleanSymbol}</span>
+                <div class="stock-chart-legend">
+                    <span><span style="display:inline-block;width:10px;height:3px;background:#22c55e;margin-right:4px;"></span>Entry: ₹${stock.entry_price || 0}</span>
+                    <span><span style="display:inline-block;width:10px;height:3px;background:#3b82f6;margin-right:4px;"></span>Target: ₹${stock.target_price || stock.target || 0}</span>
+                    <span><span style="display:inline-block;width:10px;height:3px;background:#ef4444;margin-right:4px;"></span>SL: ₹${stock.stop_loss || 0}</span>
+                </div>
+            </div>
+            <div id="chart-${symbol}" class="stock-chart-container"></div>
+        `;
+        
+        container.appendChild(chartWrapper);
+        
+        // Initialize lightweight chart
+        const chart = LightweightCharts.createChart(
+            document.getElementById(`chart-${symbol}`),
+            {
+                layout: {
+                    background: { color: 'transparent' },
+                    textColor: '#a1a1a6',
+                },
+                grid: {
+                    vertLines: { color: 'rgba(56, 56, 58, 0.3)' },
+                    horzLines: { color: 'rgba(56, 56, 58, 0.3)' },
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                    vertLine: {
+                        color: '#0a84ff',
+                        width: 1,
+                        style: LightweightCharts.LineStyle.Dashed,
+                    },
+                    horzLine: {
+                        color: '#0a84ff',
+                        width: 1,
+                        style: LightweightCharts.LineStyle.Dashed,
+                    },
+                },
+                rightPriceScale: {
+                    borderColor: '#38383a',
+                },
+                timeScale: {
+                    borderColor: '#38383a',
+                    timeVisible: true,
+                    secondsVisible: false,
+                },
+                handleScroll: {
+                    vertTouchDrag: false,
+                },
+            }
+        );
+        
+        // Add candlestick series for price
+        const candleSeries = chart.addCandlestickSeries({
+            upColor: '#22c55e',
+            downColor: '#ef4444',
+            borderUpColor: '#22c55e',
+            borderDownColor: '#ef4444',
+            wickUpColor: '#22c55e',
+            wickDownColor: '#ef4444',
+        });
+        
+        // Add horizontal lines for Entry, Target, SL
+        const entryLine = chart.addLineSeries({
+            color: '#22c55e',
+            lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Solid,
+            lastValueVisible: true,
+            title: 'Entry',
+        });
+        
+        const targetLine = chart.addLineSeries({
+            color: '#3b82f6',
+            lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            lastValueVisible: true,
+            title: 'Target',
+        });
+        
+        const slLine = chart.addLineSeries({
+            color: '#ef4444',
+            lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            lastValueVisible: true,
+            title: 'SL',
+        });
+        
+        // Store chart instance
+        stockCharts[symbol] = {
+            chart,
+            candleSeries,
+            entryLine,
+            targetLine,
+            slLine,
+            wrapper: chartWrapper,
+            entryPrice: stock.entry_price,
+            targetPrice: stock.target_price || stock.target,
+            stopLoss: stock.stop_loss,
+        };
+        
+        // Fetch historical data
+        await fetchAndDisplayHistoricalData(symbol);
+    }
+    
+    // Remove charts for stocks that are no longer selected
+    Object.keys(stockCharts).forEach(symbol => {
+        if (!stocks.find(s => s.symbol === symbol)) {
+            removeStockChart(symbol);
+        }
+    });
+}
+
+async function fetchAndDisplayHistoricalData(symbol) {
+    try {
+        const response = await getStockHistory(symbol);
+        if (!response.success || !response.data) return;
+        
+        const data = response.data;
+        const chartData = stockCharts[symbol];
+        if (!chartData) return;
+        
+        // Set candles
+        if (data.candles && data.candles.length > 0) {
+            chartData.candleSeries.setData(data.candles);
+            stockPriceHistory[symbol] = data.candles;
+        }
+        
+        // Set horizontal lines
+        const timeRange = data.candles && data.candles.length > 0 
+            ? { start: data.candles[0].time, end: data.candles[data.candles.length - 1].time }
+            : { start: Math.floor(Date.now() / 1000) - 3600, end: Math.floor(Date.now() / 1000) };
+        
+        if (data.entry_price) {
+            chartData.entryLine.setData([
+                { time: timeRange.start, value: data.entry_price },
+                { time: timeRange.end + 3600, value: data.entry_price }
+            ]);
+        }
+        
+        if (data.target_price) {
+            chartData.targetLine.setData([
+                { time: timeRange.start, value: data.target_price },
+                { time: timeRange.end + 3600, value: data.target_price }
+            ]);
+        }
+        
+        if (data.stop_loss) {
+            chartData.slLine.setData([
+                { time: timeRange.start, value: data.stop_loss },
+                { time: timeRange.end + 3600, value: data.stop_loss }
+            ]);
+        }
+        
+        // Fit content
+        chartData.chart.timeScale().fitContent();
+        
+    } catch (error) {
+        console.error(`Error fetching historical data for ${symbol}:`, error);
+    }
+}
+
+function updateStockChartRealtime(symbol, priceData) {
+    const chartData = stockCharts[symbol];
+    if (!chartData) return;
+    
+    // Create a candle from the price data
+    const time = Math.floor(Date.now() / 1000);
+    const price = priceData.ltp || priceData.close || priceData;
+    
+    // If we have historical data, update the last candle or add new one
+    if (stockPriceHistory[symbol] && stockPriceHistory[symbol].length > 0) {
+        const lastCandle = stockPriceHistory[symbol][stockPriceHistory[symbol].length - 1];
+        const lastCandleTime = lastCandle.time;
+        
+        // If same minute, update last candle
+        if (Math.floor(time / 60) === Math.floor(lastCandleTime / 60)) {
+            lastCandle.close = price;
+            if (price > lastCandle.high) lastCandle.high = price;
+            if (price < lastCandle.low) lastCandle.low = price;
+            chartData.candleSeries.update(lastCandle);
+        } else {
+            // Add new candle
+            const newCandle = {
+                time: time,
+                open: price,
+                high: price,
+                low: price,
+                close: price
+            };
+            stockPriceHistory[symbol].push(newCandle);
+            chartData.candleSeries.update(newCandle);
+        }
+    } else {
+        // No history, create new candle
+        const newCandle = {
+            time: time,
+            open: price,
+            high: price,
+            low: price,
+            close: price
+        };
+        chartData.candleSeries.update(newCandle);
+    }
+}
+
+function removeStockChart(symbol) {
+    const chartData = stockCharts[symbol];
+    if (!chartData) return;
+    
+    // Remove chart
+    chartData.chart.remove();
+    
+    // Remove wrapper element
+    if (chartData.wrapper && chartData.wrapper.parentNode) {
+        chartData.wrapper.parentNode.removeChild(chartData.wrapper);
+    }
+    
+    // Clean up
+    delete stockCharts[symbol];
+    delete stockPriceHistory[symbol];
+}
+
+// ==================== Chart Data Management ====================
+// NOTE: We do NOT poll for historical data to avoid API rate limits (AB1004)
+// Instead, we:
+// 1. Fetch historical data ONCE when charts are created
+// 2. Build real-time candles from price updates every 1 minute (not 5 seconds)
+
+let lastChartUpdateTime = 0;
+const CHART_UPDATE_INTERVAL = 60000; // 1 minute in milliseconds
+
+function updateChartsFromRealtimeData(stocks) {
+    // Only update charts every 1 minute to avoid rate limits
+    const now = Date.now();
+    if (now - lastChartUpdateTime < CHART_UPDATE_INTERVAL) {
+        return; // Skip update, not enough time passed
+    }
+    
+    lastChartUpdateTime = now;
+    console.log('📈 Updating charts (1-minute interval)...');
+    
+    // Update charts with real-time price data from the main dashboard refresh
+    // This avoids making additional API calls for historical data
+    stocks.forEach(stock => {
+        if (stock.ltp && stockCharts[stock.symbol]) {
+            updateStockChartRealtime(stock.symbol, { ltp: stock.ltp });
+        }
+    });
+}
+
 // ==================== Strategy API Functions ====================
 
 async function getStrategies() {
@@ -428,6 +714,13 @@ function updateStocksTable(stocks) {
 
     if (!stocks || stocks.length === 0) {
         tbody.innerHTML = '<tr class="no-data"><td colspan="6">No stocks selected yet</td></tr>';
+        // Also clear charts
+        const chartContainer = document.getElementById('stock-charts-container');
+        if (chartContainer) {
+            chartContainer.innerHTML = '<div class="text-center py-8 text-text-muted">Select stocks to view charts</div>';
+        }
+        // Clean up chart instances
+        Object.keys(stockCharts).forEach(symbol => removeStockChart(symbol));
         return;
     }
 
@@ -448,6 +741,12 @@ function updateStocksTable(stocks) {
             </tr>
         `;
     }).join('');
+    
+    // Initialize or update charts for selected stocks
+    initializeStockCharts(stocks);
+    
+    // Update real-time data for existing charts (from main data refresh, no extra API calls)
+    updateChartsFromRealtimeData(stocks);
 }
 
 function updatePositions(data) {
@@ -845,15 +1144,30 @@ async function handleStop() {
 }
 
 async function handleSaveConfig() {
+    const usePercentage = document.getElementById('capital-percent-fields')?.classList.contains('hidden') === false;
+
     const updates = {
         'strategy.stop_loss_percent': parseFloat(document.getElementById('stop-loss').value),
         'strategy.target_percent': parseFloat(document.getElementById('target').value),
-        'strategy.max_trades_per_day': parseInt(document.getElementById('max-trades').value)
+        'strategy.max_trades_per_day': parseInt(document.getElementById('max-trades').value),
+        'capital.use_percentage': usePercentage,
+        'capital.trading_percentage': parseInt(document.getElementById('trading-capital-percent').value),
+        'capital.per_trade_percentage': parseInt(document.getElementById('per-trade-percent').value)
     };
+
+    // Only include fixed amount if not using percentage
+    if (!usePercentage) {
+        const fixedAmount = document.getElementById('trading-capital-fixed').value;
+        if (fixedAmount) {
+            updates['capital.fixed_amount'] = parseFloat(fixedAmount);
+        }
+    } else {
+        updates['capital.fixed_amount'] = null;
+    }
 
     const result = await updateConfig(updates);
     if (result.success) {
-        addLogEntry('CONFIG', 'Configuration saved');
+        addLogEntry('CONFIG', 'Configuration saved including capital settings');
         alert('Configuration saved successfully!');
     } else {
         alert(`Failed to save: ${result.error}`);
@@ -873,6 +1187,29 @@ async function handleModeToggle(mode) {
         document.getElementById('mode-paper').classList.toggle('active', mode === 'paper');
         document.getElementById('mode-live').classList.toggle('active', mode === 'live');
         addLogEntry('SYSTEM', `Switched to ${mode.toUpperCase()} mode`);
+    }
+}
+
+function handleCapitalModeToggle(mode) {
+    const percentBtn = document.getElementById('capital-mode-percent');
+    const fixedBtn = document.getElementById('capital-mode-fixed');
+    const percentFields = document.getElementById('capital-percent-fields');
+    const fixedFields = document.getElementById('capital-fixed-fields');
+
+    if (mode === 'percent') {
+        percentBtn.classList.remove('btn-secondary');
+        percentBtn.classList.add('btn-primary');
+        fixedBtn.classList.remove('btn-primary');
+        fixedBtn.classList.add('btn-secondary');
+        percentFields.classList.remove('hidden');
+        fixedFields.classList.add('hidden');
+    } else {
+        fixedBtn.classList.remove('btn-secondary');
+        fixedBtn.classList.add('btn-primary');
+        percentBtn.classList.remove('btn-primary');
+        percentBtn.classList.add('btn-secondary');
+        fixedFields.classList.remove('hidden');
+        percentFields.classList.add('hidden');
     }
 }
 
@@ -1103,6 +1440,10 @@ function initEventListeners() {
     document.getElementById('mode-paper')?.addEventListener('click', () => handleModeToggle('paper'));
     document.getElementById('mode-live')?.addEventListener('click', () => handleModeToggle('live'));
 
+    // Capital Config
+    document.getElementById('capital-mode-percent')?.addEventListener('click', () => handleCapitalModeToggle('percent'));
+    document.getElementById('capital-mode-fixed')?.addEventListener('click', () => handleCapitalModeToggle('fixed'));
+
     // Strategy
     document.getElementById('btn-switch-strategy')?.addEventListener('click', handleSwitchStrategy);
     document.getElementById('strategy-select')?.addEventListener('change', handleStrategySelectChange);
@@ -1131,6 +1472,23 @@ async function loadInitialConfig() {
         const liveBtn = document.getElementById('mode-live');
         if (paperBtn) paperBtn.classList.toggle('active', mode === 'paper');
         if (liveBtn) liveBtn.classList.toggle('active', mode === 'live');
+
+        // Load capital configuration
+        const capitalConfig = result.data.capital || {};
+        const usePercentage = capitalConfig.use_percentage !== false; // default true
+
+        // Set capital mode toggle
+        handleCapitalModeToggle(usePercentage ? 'percent' : 'fixed');
+
+        // Set capital values
+        const tradingPercent = document.getElementById('trading-capital-percent');
+        if (tradingPercent) tradingPercent.value = capitalConfig.trading_percentage || 50;
+
+        const tradingFixed = document.getElementById('trading-capital-fixed');
+        if (tradingFixed) tradingFixed.value = capitalConfig.fixed_amount || '';
+
+        const perTradePercent = document.getElementById('per-trade-percent');
+        if (perTradePercent) perTradePercent.value = capitalConfig.per_trade_percentage || 25;
     }
 
     // Load available strategies
@@ -1421,6 +1779,17 @@ function scheduleNextMarketPolling() {
         startNifty50Polling();
     }, delay);
 }
+
+// Handle window resize for charts
+window.addEventListener('resize', () => {
+    Object.values(stockCharts).forEach(chartData => {
+        if (chartData && chartData.chart) {
+            chartData.chart.applyOptions({
+                width: chartData.wrapper.clientWidth - 32 // Account for padding
+            });
+        }
+    });
+});
 
 function init() {
     // Update time every second

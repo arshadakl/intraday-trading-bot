@@ -94,7 +94,7 @@ class RiskManager:
         
         return True, "Trading allowed"
     
-    def calculate_position_size(self, entry_price: float, stop_loss: float) -> int:
+    def calculate_position_size(self, entry_price: float, stop_loss: float, direction: str = 'LONG') -> int:
         """
         Calculate position size based on risk per trade.
         
@@ -103,23 +103,36 @@ class RiskManager:
         
         Formula:
         Risk Amount = Capital × (configured risk % / 100)
-        Price Difference = Entry Price - Stop Loss Price (from ATR or %)
+        Price Difference = |Entry Price - Stop Loss Price| (from ATR or %)
         Quantity = Risk Amount / Price Difference
         
         Args:
             entry_price: Planned entry price
             stop_loss: Stop-loss price (may be ATR-based)
+            direction: 'LONG' or 'SHORT' - affects SL validation
             
         Returns:
             Number of shares to buy (rounded down)
         """
         self._check_new_day()
         
-        # Calculate price difference first (this is ATR-based if dynamic SL)
-        price_difference = entry_price - stop_loss
+        direction = direction.upper()
         
-        if price_difference <= 0:
-            logger.warning("⚠️ Invalid stop-loss: must be below entry price")
+        # Validate stop-loss based on direction
+        if direction == 'LONG':
+            # For LONG: stop-loss must be BELOW entry price
+            if stop_loss >= entry_price:
+                logger.warning(f"⚠️ Invalid stop-loss for LONG: must be below entry price (SL={stop_loss}, Entry={entry_price})")
+                return 0
+            price_difference = entry_price - stop_loss
+        elif direction == 'SHORT':
+            # For SHORT: stop-loss must be ABOVE entry price
+            if stop_loss <= entry_price:
+                logger.warning(f"⚠️ Invalid stop-loss for SHORT: must be above entry price (SL={stop_loss}, Entry={entry_price})")
+                return 0
+            price_difference = stop_loss - entry_price
+        else:
+            logger.warning(f"⚠️ Invalid direction '{direction}': must be LONG or SHORT")
             return 0
         
         # Calculate actual SL% being used

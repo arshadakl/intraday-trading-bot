@@ -401,13 +401,13 @@ class ThreeMinuteStrategy(BaseStrategy):
     
     def _calculate_sl_target(self, symbol: str, signal: str, entry_price: float) -> Tuple[float, float]:
         """
-        Calculate stop loss and target based on opening range and R:R ratio.
+        Calculate stop loss and target based on opening range and configured percentages.
         
         Priority:
         1. Use opening range high/low as SL (if available)
         2. Fall back to percentage-based SL
         
-        Target is calculated based on risk-reward ratio.
+        Target is calculated based on the configured target_percent (fixed at entry).
         """
         range_data = self.opening_range.get(symbol, {})
         
@@ -418,11 +418,8 @@ class ThreeMinuteStrategy(BaseStrategy):
             else:
                 stop_loss = entry_price * (1 - self.stop_loss_percent / 100)
             
-            # Calculate risk
-            risk = entry_price - stop_loss
-            
-            # Target based on R:R
-            target = entry_price + (risk * self.risk_reward_ratio)
+            # Calculate target based on fixed target_percent (NOT risk-reward ratio)
+            target = entry_price * (1 + self.target_percent / 100)
             
         else:  # BEARISH
             # For shorts: SL above opening range high
@@ -431,21 +428,20 @@ class ThreeMinuteStrategy(BaseStrategy):
             else:
                 stop_loss = entry_price * (1 + self.stop_loss_percent / 100)
             
-            # Calculate risk
-            risk = stop_loss - entry_price
-            
-            # Target based on R:R
-            target = entry_price - (risk * self.risk_reward_ratio)
+            # Calculate target based on fixed target_percent (NOT risk-reward ratio)
+            target = entry_price * (1 - self.target_percent / 100)
         
         # Validate SL is not too wide
         max_sl_amount = entry_price * (self.max_sl_percent / 100)
         
         if signal == 'BULLISH' and (entry_price - stop_loss) > max_sl_amount:
             stop_loss = entry_price - max_sl_amount
-            target = entry_price + (max_sl_amount * self.risk_reward_ratio)
+            # Recalculate target based on target_percent after SL adjustment
+            target = entry_price * (1 + self.target_percent / 100)
         elif signal == 'BEARISH' and (stop_loss - entry_price) > max_sl_amount:
             stop_loss = entry_price + max_sl_amount
-            target = entry_price - (max_sl_amount * self.risk_reward_ratio)
+            # Recalculate target based on target_percent after SL adjustment
+            target = entry_price * (1 - self.target_percent / 100)
         
         return round(stop_loss, 2), round(target, 2)
     
@@ -574,17 +570,15 @@ class ThreeMinuteStrategy(BaseStrategy):
         # Use gap percentage or default
         gap = stock.get('gap_percent', 0)
         
-        # Calculate entry based on signal
+        # Calculate entry based on signal using configured stop_loss_percent and target_percent
         if signal == 'BULLISH':
             entry_price = price * 1.001  # Slight buffer above
-            sl_amount = price * (self.stop_loss_percent / 100)
-            stop_loss = entry_price - sl_amount
-            target_price = entry_price + (sl_amount * self.risk_reward_ratio)
+            stop_loss = entry_price * (1 - self.stop_loss_percent / 100)
+            target_price = entry_price * (1 + self.target_percent / 100)
         else:  # BEARISH
             entry_price = price * 0.999  # Slight buffer below
-            sl_amount = price * (self.stop_loss_percent / 100)
-            stop_loss = entry_price + sl_amount
-            target_price = entry_price - (sl_amount * self.risk_reward_ratio)
+            stop_loss = entry_price * (1 + self.stop_loss_percent / 100)
+            target_price = entry_price * (1 - self.target_percent / 100)
         
         return {
             'entry_price': round(entry_price, 2),
@@ -592,7 +586,8 @@ class ThreeMinuteStrategy(BaseStrategy):
             'target_price': round(target_price, 2),
             'gap_percent': gap,
             'signal_type': signal,
-            'r_r_ratio': self.risk_reward_ratio
+            'stop_loss_percent': self.stop_loss_percent,
+            'target_percent': self.target_percent
         }
     
     def get_strategy_status(self) -> Dict:

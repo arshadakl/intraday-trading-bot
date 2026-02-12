@@ -592,11 +592,13 @@ class TradingBot:
         entry_price = signal['entry_price']
         stop_loss = signal['stop_loss']
         target = signal['target']
+        direction = signal.get('direction', 'LONG')
         
         # Calculate quantity based on risk
         quantity = self.risk_manager.calculate_position_size(
             entry_price=entry_price,
-            stop_loss=stop_loss
+            stop_loss=stop_loss,
+            direction=direction
         )
         
         if quantity <= 0:
@@ -2005,15 +2007,33 @@ class TradingBot:
         try:
             for key, value in updates.items():
                 self.config.set(key, value)
-            
+
             # Update strategy if relevant settings changed
             if self.strategy:
                 self.strategy.stop_loss_percent = self.config.stop_loss_percent
                 self.strategy.target_percent = self.config.target_percent
-            
+
+            # Check if capital configuration was updated
+            capital_keys = ['capital.use_percentage', 'capital.trading_percentage', 'capital.fixed_amount', 'capital.per_trade_percentage']
+            capital_updated = any(key in updates for key in capital_keys)
+
+            if capital_updated and self.risk_manager:
+                # Recalculate trading capital with new settings
+                balance = 0
+                if self.config.is_paper_mode and self.paper_trader:
+                    balance = self.paper_trader.get_available_balance()
+                elif self.angel_client:
+                    balance = self.angel_client.get_available_balance()
+
+                if balance > 0:
+                    new_trading_capital = self._calculate_trading_capital(balance)
+                    self.risk_manager.update_capital(new_trading_capital)
+                    logger.info(f"💰 Capital configuration updated. New trading capital: ₹{new_trading_capital:,.2f}")
+                    self._log_activity("CONFIG", f"Capital updated to ₹{new_trading_capital:,.2f}", updates)
+
             logger.info(f"⚙️ Configuration updated: {updates}")
             self._log_activity("CONFIG", f"Configuration updated", updates)
-            
+
             return True
         except Exception as e:
             logger.error(f"❌ Failed to update config: {e}")

@@ -19,7 +19,7 @@
     "name": "three_minute",
     "stop_loss_percent": 1.0,
     "stop_loss_max": 2.0,
-    "target_percent": 2.0,
+    "target_percent": 1.0,
     "target_max": 3.0,
     "trailing_stop_loss": false,
     "max_trades_per_day": 5,
