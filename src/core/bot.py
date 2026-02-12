@@ -2021,7 +2021,7 @@ class TradingBot:
                 # Recalculate trading capital with new settings
                 balance = 0
                 if self.config.is_paper_mode and self.paper_trader:
-                    balance = self.paper_trader.get_balance()
+                    balance = self.paper_trader.get_available_balance()
                 elif self.angel_client:
                     balance = self.angel_client.get_available_balance()
 
