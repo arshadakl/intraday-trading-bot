@@ -767,6 +767,102 @@ def create_app() -> Flask:
         except Exception as e:
             return error_response(f"Error reading Nifty 50 data: {e}")
     
+    # ==================== Stock Chart Data ====================
+    
+    @app.route('/api/stocks/<symbol>/history')
+    @require_auth
+    def get_stock_history(symbol):
+        """Get historical price data for chart visualization"""
+        bot, err = get_bot()
+        if err:
+            return err
+        
+        try:
+            # Find stock in selected stocks
+            stock = None
+            if hasattr(bot, 'selected_stocks'):
+                stock = next((s for s in bot.selected_stocks if s['symbol'] == symbol), None)
+            
+            if not stock and hasattr(bot, 'position_tracker'):
+                # Check positions if not in selected stocks
+                positions = bot.position_tracker.get_all_positions()
+                stock = next((p for p in positions if p['symbol'] == symbol), None)
+            
+            if not stock:
+                return error_response(f"Stock {symbol} not found in selected stocks or positions")
+            
+            # Get historical data from Angel One
+            hist_data = bot.angel_client.get_historical_data(
+                symbol=symbol,
+                token=stock.get('token'),
+                interval="ONE_MINUTE",
+                days=1
+            )
+            
+            # hist_data is a list of dictionaries, not a DataFrame
+            if hist_data is None or len(hist_data) == 0:
+                # Return empty data if no history available
+                return success_response({
+                    'symbol': symbol,
+                    'candles': [],
+                    'entry_price': stock.get('entry_price'),
+                    'target_price': stock.get('target_price', stock.get('target')),
+                    'stop_loss': stock.get('stop_loss'),
+                    'current_price': stock.get('ltp', stock.get('current_price'))
+                })
+            
+            # Format candles for lightweight-charts
+            candles = []
+            for candle in hist_data:
+                try:
+                    timestamp = candle['timestamp']
+                    # Parse timestamp string to datetime
+                    if isinstance(timestamp, str):
+                        from datetime import datetime
+                        # Try multiple formats
+                        try:
+                            # ISO format with Z
+                            if 'Z' in timestamp:
+                                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                            # ISO format with timezone
+                            elif '+' in timestamp or timestamp.count('-') > 2:
+                                dt = datetime.fromisoformat(timestamp)
+                            # Format: "2024-01-15 09:15:00"
+                            else:
+                                dt = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
+                        except ValueError:
+                            # Fallback: try parsing as ISO format
+                            dt = datetime.fromisoformat(timestamp)
+                        time_val = int(dt.timestamp())
+                    elif hasattr(timestamp, 'timestamp'):
+                        time_val = int(timestamp.timestamp())
+                    else:
+                        time_val = int(timestamp)
+                    
+                    candles.append({
+                        'time': time_val,
+                        'open': float(candle['open']),
+                        'high': float(candle['high']),
+                        'low': float(candle['low']),
+                        'close': float(candle['close'])
+                    })
+                except Exception as e:
+                    logger.warning(f"Error processing candle data: {e}")
+                    continue
+            
+            return success_response({
+                'symbol': symbol,
+                'candles': candles,
+                'entry_price': stock.get('entry_price'),
+                'target_price': stock.get('target_price', stock.get('target')),
+                'stop_loss': stock.get('stop_loss'),
+                'current_price': stock.get('ltp', stock.get('current_price'))
+            })
+            
+        except Exception as e:
+            logger.error(f"Error fetching stock history for {symbol}: {e}")
+            return error_response(f"Error fetching historical data: {str(e)}")
+    
     # ==================== Health Check ====================
     
     @app.route('/api/health')

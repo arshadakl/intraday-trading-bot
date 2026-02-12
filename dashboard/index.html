@@ -13,6 +13,8 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/public/favicon_io/apple-touch-icon.png">
 
     <link rel="stylesheet" href="styles.css?v=20260131">
+    <!-- TradingView Lightweight Charts -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 
 <body class="bg-bg-primary text-text-primary min-h-screen flex flex-col font-sans antialiased">
@@ -293,6 +295,27 @@
                             </thead>
                             <tbody id="stocks-body"></tbody>
                         </table>
+                    </div>
+                </section>
+
+                <!-- Stock Charts -->
+                <section class="card">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg font-semibold text-text-primary">📈 Live Charts</h2>
+                        <div class="flex gap-2 text-xs">
+                            <span class="chart-legend-item">
+                                <span class="legend-color entry"></span> Entry
+                            </span>
+                            <span class="chart-legend-item">
+                                <span class="legend-color target"></span> Target
+                            </span>
+                            <span class="chart-legend-item">
+                                <span class="legend-color stoploss"></span> SL
+                            </span>
+                        </div>
+                    </div>
+                    <div id="stock-charts-container" class="stock-charts-grid">
+                        <div class="text-center py-8 text-text-muted">Select stocks to view charts</div>
                     </div>
                 </section>
 
