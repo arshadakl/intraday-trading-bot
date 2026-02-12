@@ -177,6 +177,43 @@
                                 <button id="mode-live" class="flex-1 btn-secondary py-2">Live</button>
                             </div>
                         </div>
+                        <hr class="border-border-subtle my-4">
+                        <div class="space-y-2">
+                            <label class="block text-sm text-text-secondary font-medium">💰 Capital Allocation</label>
+                            <div class="flex gap-2 mb-2">
+                                <button id="capital-mode-percent" class="flex-1 btn-primary py-2 text-xs">Use %</button>
+                                <button id="capital-mode-fixed" class="flex-1 btn-secondary py-2 text-xs">Fixed</button>
+                            </div>
+                        </div>
+                        <div id="capital-percent-fields" class="space-y-2">
+                            <label for="trading-capital-percent" class="block text-sm text-text-secondary">Trading
+                                Capital %</label>
+                            <select id="trading-capital-percent" class="form-select">
+                                <option value="10">10%</option>
+                                <option value="25">25%</option>
+                                <option value="50" selected>50%</option>
+                                <option value="75">75%</option>
+                                <option value="100">100%</option>
+                            </select>
+                        </div>
+                        <div id="capital-fixed-fields" class="space-y-2 hidden">
+                            <label for="trading-capital-fixed" class="block text-sm text-text-secondary">Fixed Amount
+                                (₹)</label>
+                            <input id="trading-capital-fixed" type="number" class="form-input" placeholder="50000"
+                                min="1000">
+                        </div>
+                        <div class="space-y-2">
+                            <label for="per-trade-percent" class="block text-sm text-text-secondary">Per Trade %</label>
+                            <select id="per-trade-percent" class="form-select">
+                                <option value="5">5%</option>
+                                <option value="10">10%</option>
+                                <option value="15">15%</option>
+                                <option value="20">20%</option>
+                                <option value="25" selected>25%</option>
+                                <option value="30">30%</option>
+                                <option value="50">50%</option>
+                            </select>
+                        </div>
                         <button id="save-config" class="w-full btn-success py-2">💾 Save Changes</button>
                     </div>
                 </section>
@@ -306,70 +343,82 @@
     <!-- Nifty 50 Tab -->
     <div class="tab-content hidden p-4 md:p-6" id="tab-nifty50">
         <div class="max-w-7xl mx-auto space-y-6">
+            <!-- Metadata -->
+            <section class="card">
+                <div class="flex flex-wrap justify-between items-center gap-4">
+                    <div>
+                        <h2 class="text-lg font-semibold text-text-primary">📊 Nifty 50 Pre-Open Data</h2>
+                        <p class="text-sm text-text-secondary mt-1">Real-time pre-market data from NSE</p>
+                    </div>
+                    <div class="text-right text-sm text-text-secondary">
+                        <div>Total: <span id="nifty50-total" class="font-semibold text-text-primary">-</span></div>
+                        <div>Updated: <span id="nifty50-updated" class="font-mono">-</span></div>
+                        <div>Source: <span id="nifty50-source" class="text-accent">-</span></div>
+                        <div class="text-xs text-text-muted mt-1">Next update: <span id="nifty50-update-time">09:10 AM
+                                IST</span></div>
+                    </div>
+                </div>
+            </section>
+
             <!-- 3-Minute Strategy Watchlist -->
             <section class="card">
                 <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-lg font-semibold text-text-primary">🎯 3-Minute Strategy Watchlist</h2>
-                    <div id="watchlist-status" class="text-sm text-text-secondary"></div>
+                    <h2 class="text-lg font-semibold text-text-primary">📋 3-Minute Strategy Watchlist</h2>
+                    <div id="watchlist-status" class="text-sm text-text-secondary">
+                        Loading watchlist...
+                    </div>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <!-- Bullish Stocks -->
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <!-- Bullish -->
                     <div>
-                        <h3 class="text-sm font-semibold text-success mb-3">📈 Gap Up (Long Candidates)</h3>
+                        <h3 class="text-sm font-semibold text-success mb-2">🟢 Bullish (Gap Up)</h3>
                         <div class="overflow-x-auto">
-                            <table class="w-full">
-                                <thead>
-                                    <tr class="border-b border-border-subtle">
-                                        <th class="table-header">Stock</th>
-                                        <th class="table-header text-right">Gap %</th>
-                                        <th class="table-header text-right">IEP</th>
+                            <table class="w-full text-sm">
+                                <thead class="bg-bg-elevated text-text-secondary">
+                                    <tr>
+                                        <th class="px-3 py-2 text-left">Symbol</th>
+                                        <th class="px-3 py-2 text-right">Gap %</th>
+                                        <th class="px-3 py-2 text-right">Price</th>
                                     </tr>
                                 </thead>
-                                <tbody id="watchlist-bullish-body"></tbody>
+                                <tbody id="watchlist-bullish-body" class="divide-y divide-border-subtle">
+                                    <tr>
+                                        <td colspan="3" class="px-3 py-4 text-center text-text-muted">Loading...</td>
+                                    </tr>
+                                </tbody>
                             </table>
                         </div>
                     </div>
-                    <!-- Bearish Stocks -->
+
+                    <!-- Bearish -->
                     <div>
-                        <h3 class="text-sm font-semibold text-danger mb-3">📉 Gap Down (Short Candidates)</h3>
+                        <h3 class="text-sm font-semibold text-danger mb-2">🔴 Bearish (Gap Down)</h3>
                         <div class="overflow-x-auto">
-                            <table class="w-full">
-                                <thead>
-                                    <tr class="border-b border-border-subtle">
-                                        <th class="table-header">Stock</th>
-                                        <th class="table-header text-right">Gap %</th>
-                                        <th class="table-header text-right">IEP</th>
+                            <table class="w-full text-sm">
+                                <thead class="bg-bg-elevated text-text-secondary">
+                                    <tr>
+                                        <th class="px-3 py-2 text-left">Symbol</th>
+                                        <th class="px-3 py-2 text-right">Gap %</th>
+                                        <th class="px-3 py-2 text-right">Price</th>
                                     </tr>
                                 </thead>
-                                <tbody id="watchlist-bearish-body"></tbody>
+                                <tbody id="watchlist-bearish-body" class="divide-y divide-border-subtle">
+                                    <tr>
+                                        <td colspan="3" class="px-3 py-4 text-center text-text-muted">Loading...</td>
+                                    </tr>
+                                </tbody>
                             </table>
                         </div>
                     </div>
                 </div>
             </section>
 
-            <!-- Full Nifty 50 Pre-Open Data -->
+            <!-- All Stocks Grid -->
             <section class="card">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-lg font-semibold text-text-primary">📊 Nifty 50 Pre-Open Data</h2>
-                    <div class="flex items-center gap-4 text-sm">
-                        <span class="text-text-secondary">Total: <span id="nifty50-total" class="font-medium text-text-primary">0</span></span>
-                        <span class="text-text-secondary">Updated: <span id="nifty50-updated" class="font-medium text-text-primary">--</span></span>
-                    </div>
-                </div>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm">
-                    <div>
-                        <span class="text-text-muted">Source:</span>
-                        <span id="nifty50-source" class="font-medium text-text-primary ml-1">NSE API</span>
-                    </div>
-                    <div>
-                        <span class="text-text-muted">Update Time:</span>
-                        <span id="nifty50-update-time" class="font-medium text-text-primary ml-1">09:10 AM IST</span>
-                    </div>
-                </div>
-                <!-- Card Grid View -->
-                <div id="nifty50-card-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                    <div class="text-center py-8 text-text-muted">Loading Nifty 50 data...</div>
+                <h2 class="text-lg font-semibold mb-4 text-text-primary">🏢 All Nifty 50 Stocks</h2>
+                <div id="nifty50-card-grid" class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div class="text-center py-8 text-text-muted col-span-full">Loading Nifty 50 data...</div>
                 </div>
             </section>
         </div>

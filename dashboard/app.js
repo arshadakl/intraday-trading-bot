@@ -845,15 +845,30 @@ async function handleStop() {
 }
 
 async function handleSaveConfig() {
+    const usePercentage = document.getElementById('capital-percent-fields')?.classList.contains('hidden') === false;
+
     const updates = {
         'strategy.stop_loss_percent': parseFloat(document.getElementById('stop-loss').value),
         'strategy.target_percent': parseFloat(document.getElementById('target').value),
-        'strategy.max_trades_per_day': parseInt(document.getElementById('max-trades').value)
+        'strategy.max_trades_per_day': parseInt(document.getElementById('max-trades').value),
+        'capital.use_percentage': usePercentage,
+        'capital.trading_percentage': parseInt(document.getElementById('trading-capital-percent').value),
+        'capital.per_trade_percentage': parseInt(document.getElementById('per-trade-percent').value)
     };
+
+    // Only include fixed amount if not using percentage
+    if (!usePercentage) {
+        const fixedAmount = document.getElementById('trading-capital-fixed').value;
+        if (fixedAmount) {
+            updates['capital.fixed_amount'] = parseFloat(fixedAmount);
+        }
+    } else {
+        updates['capital.fixed_amount'] = null;
+    }
 
     const result = await updateConfig(updates);
     if (result.success) {
-        addLogEntry('CONFIG', 'Configuration saved');
+        addLogEntry('CONFIG', 'Configuration saved including capital settings');
         alert('Configuration saved successfully!');
     } else {
         alert(`Failed to save: ${result.error}`);
@@ -873,6 +888,29 @@ async function handleModeToggle(mode) {
         document.getElementById('mode-paper').classList.toggle('active', mode === 'paper');
         document.getElementById('mode-live').classList.toggle('active', mode === 'live');
         addLogEntry('SYSTEM', `Switched to ${mode.toUpperCase()} mode`);
+    }
+}
+
+function handleCapitalModeToggle(mode) {
+    const percentBtn = document.getElementById('capital-mode-percent');
+    const fixedBtn = document.getElementById('capital-mode-fixed');
+    const percentFields = document.getElementById('capital-percent-fields');
+    const fixedFields = document.getElementById('capital-fixed-fields');
+
+    if (mode === 'percent') {
+        percentBtn.classList.remove('btn-secondary');
+        percentBtn.classList.add('btn-primary');
+        fixedBtn.classList.remove('btn-primary');
+        fixedBtn.classList.add('btn-secondary');
+        percentFields.classList.remove('hidden');
+        fixedFields.classList.add('hidden');
+    } else {
+        fixedBtn.classList.remove('btn-secondary');
+        fixedBtn.classList.add('btn-primary');
+        percentBtn.classList.remove('btn-primary');
+        percentBtn.classList.add('btn-secondary');
+        fixedFields.classList.remove('hidden');
+        percentFields.classList.add('hidden');
     }
 }
 
@@ -1103,6 +1141,10 @@ function initEventListeners() {
     document.getElementById('mode-paper')?.addEventListener('click', () => handleModeToggle('paper'));
     document.getElementById('mode-live')?.addEventListener('click', () => handleModeToggle('live'));
 
+    // Capital Config
+    document.getElementById('capital-mode-percent')?.addEventListener('click', () => handleCapitalModeToggle('percent'));
+    document.getElementById('capital-mode-fixed')?.addEventListener('click', () => handleCapitalModeToggle('fixed'));
+
     // Strategy
     document.getElementById('btn-switch-strategy')?.addEventListener('click', handleSwitchStrategy);
     document.getElementById('strategy-select')?.addEventListener('change', handleStrategySelectChange);
@@ -1131,6 +1173,23 @@ async function loadInitialConfig() {
         const liveBtn = document.getElementById('mode-live');
         if (paperBtn) paperBtn.classList.toggle('active', mode === 'paper');
         if (liveBtn) liveBtn.classList.toggle('active', mode === 'live');
+
+        // Load capital configuration
+        const capitalConfig = result.data.capital || {};
+        const usePercentage = capitalConfig.use_percentage !== false; // default true
+
+        // Set capital mode toggle
+        handleCapitalModeToggle(usePercentage ? 'percent' : 'fixed');
+
+        // Set capital values
+        const tradingPercent = document.getElementById('trading-capital-percent');
+        if (tradingPercent) tradingPercent.value = capitalConfig.trading_percentage || 50;
+
+        const tradingFixed = document.getElementById('trading-capital-fixed');
+        if (tradingFixed) tradingFixed.value = capitalConfig.fixed_amount || '';
+
+        const perTradePercent = document.getElementById('per-trade-percent');
+        if (perTradePercent) perTradePercent.value = capitalConfig.per_trade_percentage || 25;
     }
 
     // Load available strategies
