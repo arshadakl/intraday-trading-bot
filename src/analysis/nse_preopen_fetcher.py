@@ -1,7 +1,14 @@
 """NSE Pre-Open Market Data Fetcher - Fetches pre-open market data from NSE India
 
 This module handles fetching pre-open market data from NSE India's website/API.
-The pre-open session runs from 9:00 AM - 9:08 AM IST, with price matching till 9:15 AM.
+
+NSE Pre-Open Session Timeline:
+- 9:00-9:08 AM IST: Order entry period (data changes frequently)
+- 9:08-9:10 AM IST: Order matching period (final IEP being determined)
+- 9:10-9:15 AM IST: Final IEP available, data is STABLE (fetch data here)
+
+IMPORTANT: For trading strategies, fetch data AFTER 9:10 AM when Indicative 
+Equilibrium Price (IEP) is finalized and stable.
 
 Data includes:
 - Indicative Equilibrium Price (IEP) - The expected opening price
@@ -27,17 +34,24 @@ class NSEPreOpenFetcher:
     Fetches pre-open market data from NSE India.
     
     NSE provides pre-open data through their website/API endpoints.
+    
+    IMPORTANT TIMING:
+    - Data is NOT stable during 9:00-9:08 AM (order entry period)
+    - Data is being finalized during 9:08-9:10 AM (order matching)
+    - Data is STABLE and USABLE only after 9:10 AM (IEP confirmed)
+    
     This class handles:
     - Session management (cookies for NSE access)
     - Rate limiting (to avoid being blocked)
     - Data parsing and normalization
     - Caching (to reduce API calls)
+    - Waiting until 9:10 AM for final data
     
     Usage:
         fetcher = NSEPreOpenFetcher()
-        data = fetcher.fetch_preopen_data()
-        gainers = fetcher.get_top_gainers(count=10)
-        losers = fetcher.get_top_losers(count=10)
+        # Wait for 9:10 AM before fetching
+        if fetcher.is_preopen_data_final():
+            data = fetcher.fetch_preopen_data()
     """
     
     # NSE API endpoints
