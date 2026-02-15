@@ -1,13 +1,19 @@
 """Pre-Open Gap Stock Picker - Stock selection for 3-Minute Strategy
 
 This stock picker is specifically designed for the "3 Minute Strategy" which:
-1. Fetches pre-open market data from NSE between 9:00-9:08 AM
+1. Fetches pre-open market data from NSE after 9:10 AM (when IEP is finalized)
 2. Identifies stocks with significant gap-up (bullish) or gap-down (bearish) openings
 3. Selects the best candidates based on gap size, volume, and other factors
 4. Monitors for confirmation signals (candle breakout) after market opens
 
+NSE Pre-Open Timeline:
+- 9:00-9:08 AM: Order entry period (data changes frequently)
+- 9:08-9:10 AM: Order matching period (final price being determined)
+- 9:10-9:15 AM: Final IEP available, data is stable (fetch data here)
+
 The picker is different from other pickers because it:
 - Sources data from NSE pre-open API (not broker historical data)
+- Waits until 9:10 AM for final IEP data before selecting stocks
 - Prioritizes gap percentage as the primary selection criterion
 - Works in two phases: Pre-open (stock picking) and Post-open (confirmation)
 """
@@ -25,7 +31,10 @@ class PreOpenGapPicker(BaseStockPicker):
     Stock picker for the 3-Minute Strategy based on pre-open gap analysis.
     
     This picker identifies stocks with significant gaps from previous close
-    during the pre-open session (9:00-9:08 AM IST).
+    using final pre-open data available after 9:10 AM IST (when IEP is confirmed).
+    
+    IMPORTANT: Data should be fetched after 9:10 AM when Indicative Equilibrium
+    Price (IEP) is finalized, not during 9:00-9:08 AM when data changes frequently.
     
     Selection Criteria:
     1. Gap Size: Primary factor - stocks with 1%+ gap are prioritized

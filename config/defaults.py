@@ -67,7 +67,7 @@ DEFAULT_CONFIG = {
         "three_minute": {
             "enabled": True,
             "display_name": "3-Minute Strategy (Pre-Open Gap)",
-            "description": "Trade gap-up/gap-down stocks identified from NSE pre-open session with candle breakout confirmation",
+            "description": "Mean reversion strategy - fade the gap. Short strongest on gap-up, long weakest on gap-down",
             "stock_picker": "preopen_gap",
             "params": {
                 "min_gap_percent": 1.0,
@@ -75,13 +75,18 @@ DEFAULT_CONFIG = {
                 "entry_window_start": "09:20",
                 "entry_window_end": "10:30",
                 "stop_loss_percent": 1.0,
-                "target_percent": 2.0,
-                "risk_reward_ratio": 2.0,
+                "target_percent": 1.0,
+                "risk_reward_ratio": 1.0,
                 "max_sl_percent": 2.0,
-                "require_nifty_alignment": True,
+                "require_nifty_alignment": False,
                 "use_opening_range_breakout": True,
-                "opening_range_minutes": 5,
-                "max_trades_per_day": 5
+                "opening_range_minutes": 3,
+                "max_trades_per_day": 2,
+                "no_new_trade_after": "14:30",
+                "max_daily_losses": 2,
+                "first_candle_sl_threshold": 1.0,
+                "volume_breakout_multiplier": 1.2,
+                "require_candle_close": True
             }
         }
     },
@@ -107,9 +112,9 @@ DEFAULT_CONFIG = {
     
     "timing":  {
         "analysis_start":  "08:30",
-        "preopen_data_ready": "09:10",  # Final pre-open data available after this time
+        "preopen_data_ready": "09:10",  # Final IEP data available only after 9:10 AM
         "trading_start": "09:15",
-        "no_new_trade_after": "15:00",
+        "no_new_trade_after": "14:30",
         "square_off_time": "15:15",
         "market_close": "15:30"
     },
