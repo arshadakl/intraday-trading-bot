@@ -767,6 +767,85 @@ def create_app() -> Flask:
         except Exception as e:
             return error_response(f"Error reading Nifty 50 data: {e}")
     
+    @app.route('/api/nifty50/gap-status', methods=['GET'])
+    @require_auth
+    def get_nifty50_gap_status():
+        """Get Nifty 50 gap status - whether market opened gap up, gap down, or flat"""
+        from pathlib import Path
+        import json
+        
+        try:
+            # Get Nifty tracker data
+            from src.analysis.nifty_tracker import get_nifty_tracker
+            nifty_tracker = get_nifty_tracker()
+            
+            # Get Nifty 50 data from file
+            nifty50_path = Path("config/nifty50.json")
+            nifty_prev_close = None
+            nifty_iep = None
+            
+            if nifty50_path.exists():
+                try:
+                    with open(nifty50_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    stocks = data.get('stocks', [])
+                    # Find Nifty 50 index in stocks list
+                    for stock in stocks:
+                        if stock.get('symbol') == 'NIFTY' or stock.get('token') == '99926000':
+                            nifty_prev_close = stock.get('prev_close')
+                            nifty_iep = stock.get('iep')
+                            break
+                except:
+                    pass
+            
+            # Calculate gap using available data
+            open_price = nifty_tracker.open_price
+            current_price = nifty_tracker.current_price
+            prev_close = nifty_prev_close
+            
+            # Use IEP as open price if available
+            if nifty_iep and nifty_iep > 0:
+                open_price = nifty_iep
+            
+            gap_percent = 0.0
+            gap_status = "FLAT"
+            gap_points = 0.0
+            
+            if prev_close and prev_close > 0 and open_price:
+                gap_points = open_price - prev_close
+                gap_percent = (gap_points / prev_close) * 100
+                
+                # Determine gap status
+                if gap_percent > 0.2:
+                    gap_status = "GAP_UP"
+                elif gap_percent < -0.2:
+                    gap_status = "GAP_DOWN"
+                else:
+                    gap_status = "FLAT"
+            
+            # Get current change from open
+            current_change_pct = nifty_tracker.get_change_percent() if nifty_tracker.current_price else 0.0
+            current_change_pts = nifty_tracker.get_change_points() if nifty_tracker.current_price else 0.0
+            
+            return success_response({
+                'gap_status': gap_status,
+                'gap_percent': round(gap_percent, 2),
+                'gap_points': round(gap_points, 2),
+                'prev_close': prev_close,
+                'open_price': open_price,
+                'current_price': current_price,
+                'current_change_percent': round(current_change_pct, 2),
+                'current_change_points': round(current_change_pts, 2),
+                'trend': nifty_tracker.trend,
+                'day_high': nifty_tracker.day_high,
+                'day_low': nifty_tracker.day_low,
+                'timestamp': nifty_tracker.last_update.isoformat() if nifty_tracker.last_update else None
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting Nifty 50 gap status: {e}")
+            return error_response(f"Error getting gap status: {e}")
+    
     # ==================== Stock Chart Data ====================
     
     @app.route('/api/stocks/<symbol>/history')

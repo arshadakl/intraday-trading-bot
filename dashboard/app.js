@@ -1505,6 +1505,195 @@ async function getWatchlistData() {
     return fetchAPI('/nifty50/watchlist');
 }
 
+async function getNifty50GapStatus() {
+    return fetchAPI('/nifty50/gap-status');
+}
+
+let niftyGapChart = null;
+
+async function refreshNiftyGapStatus() {
+    try {
+        const result = await getNifty50GapStatus();
+        
+        if (!result.success || !result.data) {
+            console.log('Nifty gap status not available yet');
+            return;
+        }
+        
+        const data = result.data;
+        const gapStatus = data.gap_status;
+        const gapPercent = data.gap_percent;
+        const gapPoints = data.gap_points;
+        
+        // Update gap badge
+        const badge = document.getElementById('nifty-gap-badge');
+        if (badge) {
+            let badgeClass = 'bg-bg-elevated text-text-secondary';
+            let badgeText = 'FLAT';
+            let badgeIcon = '➡️';
+            
+            if (gapStatus === 'GAP_UP') {
+                badgeClass = 'bg-success/20 text-success border border-success/30';
+                badgeText = `GAP UP +${gapPercent}%`;
+                badgeIcon = '🟢';
+            } else if (gapStatus === 'GAP_DOWN') {
+                badgeClass = 'bg-danger/20 text-danger border border-danger/30';
+                badgeText = `GAP DOWN ${gapPercent}%`;
+                badgeIcon = '🔴';
+            } else {
+                badgeClass = 'bg-warning/20 text-warning border border-warning/30';
+                badgeText = 'FLAT OPEN';
+                badgeIcon = '⚪';
+            }
+            
+            badge.className = `px-4 py-2 rounded-lg font-bold text-lg ${badgeClass}`;
+            badge.innerHTML = `${badgeIcon} ${badgeText}`;
+        }
+        
+        // Update price values
+        const prevCloseEl = document.getElementById('nifty-prev-close');
+        if (prevCloseEl) prevCloseEl.textContent = data.prev_close ? `₹${data.prev_close.toLocaleString('en-IN')}` : '-';
+        
+        const openPriceEl = document.getElementById('nifty-open-price');
+        if (openPriceEl) openPriceEl.textContent = data.open_price ? `₹${data.open_price.toLocaleString('en-IN')}` : '-';
+        
+        const gapPercentEl = document.getElementById('nifty-gap-percent');
+        if (gapPercentEl) {
+            const sign = gapPercent >= 0 ? '+' : '';
+            const colorClass = gapPercent > 0 ? 'text-success' : gapPercent < 0 ? 'text-danger' : 'text-text-secondary';
+            gapPercentEl.innerHTML = `<span class="${colorClass}">${sign}${gapPercent}%</span>`;
+        }
+        
+        const currentPriceEl = document.getElementById('nifty-current-price');
+        if (currentPriceEl) {
+            const currentChange = data.current_change_percent;
+            const sign = currentChange >= 0 ? '+' : '';
+            const colorClass = currentChange > 0 ? 'text-success' : currentChange < 0 ? 'text-danger' : 'text-text-secondary';
+            currentPriceEl.innerHTML = `<span class="${colorClass}">₹${data.current_price?.toLocaleString('en-IN') || '-'} (${sign}${currentChange}%)</span>`;
+        }
+        
+        // Update trading direction indicator
+        const directionSection = document.getElementById('nifty-trading-direction');
+        const directionIcon = document.getElementById('nifty-direction-icon');
+        const directionTitle = document.getElementById('nifty-direction-title');
+        const directionDesc = document.getElementById('nifty-direction-desc');
+        
+        if (directionSection && directionTitle && directionDesc) {
+            directionSection.classList.remove('hidden');
+            
+            if (gapStatus === 'GAP_UP') {
+                directionIcon.textContent = '🔴';
+                directionTitle.textContent = 'Strategy: SHORT (Mean Reversion)';
+                directionDesc.textContent = `Nifty gapped up ${gapPercent}%. Strategy will SHORT strongest stocks expecting gap fade.`;
+                directionSection.className = 'mt-4 p-3 rounded-lg bg-danger/10 border border-danger/20';
+            } else if (gapStatus === 'GAP_DOWN') {
+                directionIcon.textContent = '🟢';
+                directionTitle.textContent = 'Strategy: LONG (Mean Reversion)';
+                directionDesc.textContent = `Nifty gapped down ${gapPercent}%. Strategy will LONG weakest stocks expecting gap fill.`;
+                directionSection.className = 'mt-4 p-3 rounded-lg bg-success/10 border border-success/20';
+            } else {
+                directionIcon.textContent = '⚪';
+                directionTitle.textContent = 'Strategy: BOTH DIRECTIONS';
+                directionDesc.textContent = 'Nifty opened flat. Strategy will trade both gap-up and gap-down stocks.';
+                directionSection.className = 'mt-4 p-3 rounded-lg bg-warning/10 border border-warning/20';
+            }
+        }
+        
+        // Update chart
+        updateNiftyGapChart(data);
+        
+    } catch (error) {
+        console.error('Error refreshing Nifty gap status:', error);
+    }
+}
+
+function updateNiftyGapChart(data) {
+    const chartContainer = document.getElementById('nifty-gap-chart');
+    const loadingEl = document.getElementById('nifty-chart-loading');
+    
+    if (!chartContainer || !data.prev_close || !data.open_price) return;
+    
+    // Hide loading
+    if (loadingEl) loadingEl.style.display = 'none';
+    
+    // Destroy existing chart if any
+    if (niftyGapChart) {
+        niftyGapChart.remove();
+        niftyGapChart = null;
+    }
+    
+    // Create new chart
+    niftyGapChart = LightweightCharts.createChart(chartContainer, {
+        layout: {
+            background: { color: 'transparent' },
+            textColor: '#a1a1a6',
+        },
+        grid: {
+            vertLines: { color: 'rgba(56, 56, 58, 0.3)' },
+            horzLines: { color: 'rgba(56, 56, 58, 0.3)' },
+        },
+        rightPriceScale: {
+            borderColor: '#38383a',
+        },
+        timeScale: {
+            visible: false,
+        },
+        handleScroll: false,
+        handleScale: false,
+    });
+    
+    // Add horizontal line series for reference prices
+    const prevCloseLine = niftyGapChart.addLineSeries({
+        color: '#22c55e',
+        lineWidth: 2,
+        lastValueVisible: true,
+        title: 'Prev Close',
+    });
+    
+    const openLine = niftyGapChart.addLineSeries({
+        color: '#3b82f6',
+        lineWidth: 2,
+        lastValueVisible: true,
+        title: 'Open',
+    });
+    
+    const currentLine = niftyGapChart.addLineSeries({
+        color: '#f59e0b',
+        lineWidth: 2,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        lastValueVisible: true,
+        title: 'Current',
+    });
+    
+    // Set data - create a simple visualization
+    const baseTime = Math.floor(Date.now() / 1000);
+    const timeRange = 100; // 100 data points
+    
+    // Previous close line (horizontal)
+    const prevCloseData = [];
+    const openData = [];
+    const currentData = [];
+    
+    for (let i = 0; i < timeRange; i++) {
+        prevCloseData.push({ time: baseTime - timeRange + i, value: data.prev_close });
+        openData.push({ time: baseTime - timeRange + i, value: data.open_price });
+        
+        // Current price line (only show from middle onwards)
+        if (i > timeRange / 2 && data.current_price) {
+            currentData.push({ time: baseTime - timeRange + i, value: data.current_price });
+        }
+    }
+    
+    prevCloseLine.setData(prevCloseData);
+    openLine.setData(openData);
+    if (currentData.length > 0) {
+        currentLine.setData(currentData);
+    }
+    
+    // Fit content
+    niftyGapChart.timeScale().fitContent();
+}
+
 async function refreshWatchlistData() {
     const bullishBody = document.getElementById('watchlist-bullish-body');
     const bearishBody = document.getElementById('watchlist-bearish-body');
@@ -1742,12 +1931,14 @@ function startNifty50Polling() {
 
         // Initial load with loading state
         refreshNifty50Data(true);
+        refreshNiftyGapStatus();
 
         // Poll every 20 seconds during market hours
         nifty50PollingInterval = setInterval(() => {
             if (isMarketHours()) {
                 // Smooth update without loading state
                 refreshNifty50Data(false);
+                refreshNiftyGapStatus();
             } else {
                 // Stop polling when market closes
                 stopNifty50Polling();
@@ -1758,6 +1949,7 @@ function startNifty50Polling() {
         console.log('📊 Market closed - Nifty50 polling not started');
         // Just load data once without polling
         refreshNifty50Data(true);
+        refreshNiftyGapStatus();
     }
 }
 

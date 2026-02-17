@@ -1911,3 +1911,48 @@ body {
   font-size: 0.75rem;
   color: rgb(245, 245, 247);
 }
+
+/* Nifty 50 Gap Status Section Styles */
+#nifty-gap-status-section {
+  position: relative;
+}
+
+#nifty-gap-badge {
+  transition: all 0.3s ease;
+}
+
+#nifty-gap-badge:hover {
+  transform: scale(1.05);
+}
+
+#nifty-gap-chart-container {
+  position: relative;
+  background: rgba(30, 30, 32, 0.5);
+}
+
+#nifty-gap-chart {
+  width: 100%;
+  height: 100%;
+}
+
+#nifty-trading-direction {
+  transition: all 0.3s ease;
+}
+
+/* Gap status animations */
+@keyframes pulse-gap {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.gap-up-active {
+  animation: pulse-gap 2s infinite;
+}
+
+.gap-down-active {
+  animation: pulse-gap 2s infinite;
+}
