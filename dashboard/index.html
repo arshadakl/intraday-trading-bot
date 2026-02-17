@@ -383,6 +383,73 @@
                 </div>
             </section>
 
+            <!-- Nifty 50 Market Open Status - Gap Up/Down/Flat Indicator -->
+            <section class="card" id="nifty-gap-status-section">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                    <div>
+                        <h2 class="text-lg font-semibold text-text-primary">🎯 Nifty 50 Market Open Status</h2>
+                        <p class="text-sm text-text-secondary mt-1">Today's opening gap analysis</p>
+                    </div>
+                    <div id="nifty-gap-badge" class="px-4 py-2 rounded-lg font-bold text-lg bg-bg-elevated text-text-secondary">
+                        Loading...
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    <div class="bg-bg-elevated p-3 rounded-lg">
+                        <div class="text-xs text-text-muted uppercase tracking-wide">Previous Close</div>
+                        <div id="nifty-prev-close" class="text-lg font-semibold text-text-primary">-</div>
+                    </div>
+                    <div class="bg-bg-elevated p-3 rounded-lg">
+                        <div class="text-xs text-text-muted uppercase tracking-wide">Open Price</div>
+                        <div id="nifty-open-price" class="text-lg font-semibold text-text-primary">-</div>
+                    </div>
+                    <div class="bg-bg-elevated p-3 rounded-lg">
+                        <div class="text-xs text-text-muted uppercase tracking-wide">Gap %</div>
+                        <div id="nifty-gap-percent" class="text-lg font-semibold text-text-primary">-</div>
+                    </div>
+                    <div class="bg-bg-elevated p-3 rounded-lg">
+                        <div class="text-xs text-text-muted uppercase tracking-wide">Current</div>
+                        <div id="nifty-current-price" class="text-lg font-semibold text-text-primary">-</div>
+                    </div>
+                </div>
+
+                <!-- Nifty 50 Mini Chart Container -->
+                <div class="mt-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="text-sm font-medium text-text-secondary">Nifty 50 Price Action</h3>
+                        <div class="flex gap-2 text-xs">
+                            <span class="chart-legend-item">
+                                <span class="legend-color" style="background:#22c55e;"></span> Prev Close
+                            </span>
+                            <span class="chart-legend-item">
+                                <span class="legend-color" style="background:#3b82f6;"></span> Open
+                            </span>
+                            <span class="chart-legend-item">
+                                <span class="legend-color" style="background:#f59e0b;"></span> Current
+                            </span>
+                        </div>
+                    </div>
+                    <div id="nifty-gap-chart-container" class="h-48 bg-bg-elevated rounded-lg relative overflow-hidden">
+                        <div id="nifty-gap-chart" class="w-full h-full"></div>
+                        <div id="nifty-chart-loading" class="absolute inset-0 flex items-center justify-center text-text-muted">
+                            Loading chart...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trading Direction Indicator -->
+                <div id="nifty-trading-direction" class="mt-4 p-3 rounded-lg bg-bg-elevated hidden">
+                    <div class="flex items-center gap-3">
+                        <span id="nifty-direction-icon" class="text-2xl">📊</span>
+                        <div>
+                            <div class="text-sm font-medium text-text-primary" id="nifty-direction-title">Strategy Direction</div>
+                            <div class="text-xs text-text-secondary" id="nifty-direction-desc">Based on gap analysis</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- 3-Minute Strategy Watchlist -->
             <section class="card">
                 <div class="flex justify-between items-center mb-4">
