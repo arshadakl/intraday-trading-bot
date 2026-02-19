@@ -1956,3 +1956,26 @@ body {
 .gap-down-active {
   animation: pulse-gap 2s infinite;
 }
+
+/* Nifty 50 Chart Interval Button Styles */
+.nifty-interval-btn {
+  background: transparent;
+  color: rgb(161, 161, 166);
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.nifty-interval-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgb(255, 255, 255);
+}
+
+.nifty-interval-btn.bg-accent {
+  background: rgb(10, 132, 255);
+  color: white;
+}
+
+.nifty-interval-btn.bg-accent:hover {
+  background: rgb(0, 122, 245);
+}

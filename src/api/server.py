@@ -243,8 +243,22 @@ def create_app() -> Flask:
         bot, err = get_bot()
         if err:
             return err
-        
-        return success_response(bot.get_status())
+
+        try:
+            status = bot.get_status()
+            # Add helpful context about data availability
+            status['data_availability'] = {
+                'stocks_selected': len(bot.selected_stocks) > 0 if hasattr(bot, 'selected_stocks') else False,
+                'stocks_count': len(bot.selected_stocks) if hasattr(bot, 'selected_stocks') else 0,
+                'has_positions': hasattr(bot, 'position_tracker') and bot.position_tracker is not None,
+                'websocket_connected': hasattr(bot, 'websocket') and bot.websocket is not None and bot.websocket.is_connected() if hasattr(bot, 'websocket') else False,
+                'strategy_loaded': hasattr(bot, 'strategy') and bot.strategy is not None,
+                'analysis_completed': bool(bot.market_analysis) if hasattr(bot, 'market_analysis') else False,
+            }
+            return success_response(status)
+        except Exception as e:
+            logger.error(f"Error getting status: {e}")
+            return error_response(f"Failed to get status: {str(e)}", "STATUS_ERROR")
     
     @app.route('/api/account')
     @require_auth
@@ -476,17 +490,50 @@ def create_app() -> Flask:
     @app.route('/api/stocks/selected')
     @require_auth
     def get_selected_stocks():
-        """Get today's selected stocks"""
+        """Get today's selected stocks with context"""
         bot, err = get_bot()
         if err:
             return err
-        
+
         stocks = bot.selected_stocks if hasattr(bot, 'selected_stocks') else []
-        
+        startup_mode = bot.startup_mode if hasattr(bot, 'startup_mode') else 'UNKNOWN'
+        current_mode = bot.get_current_mode() if hasattr(bot, 'get_current_mode') else 'UNKNOWN'
+        analysis = bot.market_analysis if hasattr(bot, 'market_analysis') else {}
+
+        # Provide context about why stocks might be empty
+        context = {
+            'reason': None,
+            'analysis_pending': False,
+            'analysis_failed': False,
+        }
+
+        if not stocks:
+            if startup_mode == 'PRE_MARKET':
+                from src.utils.timezone import now_ist_time
+                from datetime import datetime
+                now = now_ist_time()
+                analysis_start = datetime.strptime(bot.config.get('timing.analysis_start', '08:30'), "%H:%M").time() if hasattr(bot, 'config') else None
+                if analysis_start and now < analysis_start:
+                    context['reason'] = f"Analysis scheduled at {analysis_start.strftime('%H:%M')} IST"
+                    context['analysis_pending'] = True
+                else:
+                    context['reason'] = analysis.get('reason', 'Analysis pending or no stocks found')
+            elif startup_mode == 'NON_MARKET':
+                context['reason'] = 'Market closed - Analysis for reference only'
+            elif startup_mode == 'MARKET_HOURS':
+                context['reason'] = analysis.get('reason', 'No stocks met selection criteria')
+                context['analysis_failed'] = not analysis.get('trading_suitable', True)
+            else:
+                context['reason'] = 'Bot initializing or analysis not yet run'
+
         from src.utils.timezone import now_ist
         return success_response({
             'date': now_ist().strftime('%Y-%m-%d'),
-            'stocks': stocks
+            'stocks': stocks,
+            'count': len(stocks),
+            'startup_mode': startup_mode,
+            'current_mode': current_mode,
+            'context': context
         })
     
     @app.route('/api/positions')
@@ -779,33 +826,49 @@ def create_app() -> Flask:
             from src.analysis.nifty_tracker import get_nifty_tracker
             nifty_tracker = get_nifty_tracker()
             
-            # Get Nifty 50 data from file
-            nifty50_path = Path("config/nifty50.json")
+            # Try to get Nifty previous close from AngelOne API
             nifty_prev_close = None
-            nifty_iep = None
+            nifty_open_from_api = None
             
-            if nifty50_path.exists():
+            try:
+                bot, err = get_bot()
+                if bot and hasattr(bot, 'angel_client') and bot.angel_client:
+                    # Get full quote for Nifty index
+                    quote = bot.angel_client.get_quote(
+                        symbol="NIFTY",
+                        token="99926000",
+                        exchange="NSE"
+                    )
+                    if quote and quote.get('data'):
+                        nifty_data = quote['data']
+                        # previousClose is the previous day's close
+                        nifty_prev_close = nifty_data.get('previousClose') or nifty_data.get('prev_close')
+                        # open is today's open price
+                        nifty_open_from_api = nifty_data.get('open')
+                        logger.debug(f"Nifty from API - Prev Close: {nifty_prev_close}, Open: {nifty_open_from_api}")
+            except Exception as e:
+                logger.debug(f"Could not fetch Nifty quote from API: {e}")
+            
+            # Fallback: Check if we have cached Nifty data in nifty50.json index field
+            if nifty_prev_close is None:
                 try:
-                    with open(nifty50_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                    stocks = data.get('stocks', [])
-                    # Find Nifty 50 index in stocks list
-                    for stock in stocks:
-                        if stock.get('symbol') == 'NIFTY' or stock.get('token') == '99926000':
-                            nifty_prev_close = stock.get('prev_close')
-                            nifty_iep = stock.get('iep')
-                            break
-                except:
-                    pass
+                    nifty50_path = Path("config/nifty50.json")
+                    if nifty50_path.exists():
+                        with open(nifty50_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                        # Check index field first (new structure)
+                        index_data = data.get('index', {})
+                        if index_data.get('prev_close'):
+                            nifty_prev_close = index_data.get('prev_close')
+                            nifty_open_from_api = index_data.get('open') or index_data.get('iep')
+                except Exception as e:
+                    logger.debug(f"Could not read Nifty from config: {e}")
             
             # Calculate gap using available data
-            open_price = nifty_tracker.open_price
+            # Priority: API data > nifty_tracker data
+            open_price = nifty_open_from_api or nifty_tracker.open_price
             current_price = nifty_tracker.current_price
             prev_close = nifty_prev_close
-            
-            # Use IEP as open price if available
-            if nifty_iep and nifty_iep > 0:
-                open_price = nifty_iep
             
             gap_percent = 0.0
             gap_status = "FLAT"
@@ -815,7 +878,7 @@ def create_app() -> Flask:
                 gap_points = open_price - prev_close
                 gap_percent = (gap_points / prev_close) * 100
                 
-                # Determine gap status
+                # Determine gap status with 0.2% threshold
                 if gap_percent > 0.2:
                     gap_status = "GAP_UP"
                 elif gap_percent < -0.2:
@@ -823,9 +886,13 @@ def create_app() -> Flask:
                 else:
                     gap_status = "FLAT"
             
-            # Get current change from open
+            # Get current change from open (using nifty_tracker for real-time data)
             current_change_pct = nifty_tracker.get_change_percent() if nifty_tracker.current_price else 0.0
             current_change_pts = nifty_tracker.get_change_points() if nifty_tracker.current_price else 0.0
+            
+            # Log for debugging
+            logger.debug(f"Nifty Gap Status: {gap_status} ({gap_percent:+.2f}%) | "
+                        f"Open: {open_price} | PrevClose: {prev_close} | Current: {current_price}")
             
             return success_response({
                 'gap_status': gap_status,
@@ -839,12 +906,104 @@ def create_app() -> Flask:
                 'trend': nifty_tracker.trend,
                 'day_high': nifty_tracker.day_high,
                 'day_low': nifty_tracker.day_low,
-                'timestamp': nifty_tracker.last_update.isoformat() if nifty_tracker.last_update else None
+                'timestamp': nifty_tracker.last_update.isoformat() if nifty_tracker.last_update else None,
+                'data_source': 'angel_api' if nifty_prev_close else 'tracker'
             })
             
         except Exception as e:
             logger.error(f"Error getting Nifty 50 gap status: {e}")
             return error_response(f"Error getting gap status: {e}")
+    
+    @app.route('/api/nifty50/chart', methods=['GET'])
+    @require_auth
+    def get_nifty50_chart():
+        """Get Nifty 50 intraday chart data"""
+        try:
+            bot, err = get_bot()
+            if err:
+                return err
+            
+            # Get interval from query params (default to 5 minutes)
+            interval = request.args.get('interval', 'FIVE_MINUTE')
+            days = int(request.args.get('days', '1'))
+            
+            # Validate interval
+            valid_intervals = ['ONE_MINUTE', 'THREE_MINUTE', 'FIVE_MINUTE', 'TEN_MINUTE', 'FIFTEEN_MINUTE', 'THIRTY_MINUTE', 'ONE_HOUR']
+            if interval not in valid_intervals:
+                interval = 'FIVE_MINUTE'
+            
+            # Fetch Nifty 50 historical data from AngelOne
+            hist_data = bot.angel_client.get_historical_data(
+                symbol="NIFTY",
+                token="99926000",
+                interval=interval,
+                days=days
+            )
+            
+            if hist_data is None or len(hist_data) == 0:
+                return success_response({
+                    'symbol': 'NIFTY',
+                    'candles': [],
+                    'interval': interval,
+                    'message': 'No historical data available'
+                })
+            
+            # Format candles for lightweight-charts
+            candles = []
+            for candle in hist_data:
+                try:
+                    timestamp = candle['timestamp']
+                    # Parse timestamp string to datetime
+                    if isinstance(timestamp, str):
+                        from datetime import datetime
+                        try:
+                            # ISO format with Z
+                            if 'Z' in timestamp:
+                                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                            # ISO format with timezone
+                            elif '+' in timestamp or timestamp.count('-') > 2:
+                                dt = datetime.fromisoformat(timestamp)
+                            # Format: "2024-01-15 09:15:00"
+                            else:
+                                dt = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
+                        except ValueError:
+                            dt = datetime.fromisoformat(timestamp)
+                        time_val = int(dt.timestamp())
+                    elif hasattr(timestamp, 'timestamp'):
+                        time_val = int(timestamp.timestamp())
+                    else:
+                        time_val = int(timestamp)
+                    
+                    candles.append({
+                        'time': time_val,
+                        'open': float(candle['open']),
+                        'high': float(candle['high']),
+                        'low': float(candle['low']),
+                        'close': float(candle['close'])
+                    })
+                except Exception as e:
+                    logger.warning(f"Error processing Nifty candle data: {e}")
+                    continue
+            
+            # Get Nifty tracker for current price
+            from src.analysis.nifty_tracker import get_nifty_tracker
+            nifty_tracker = get_nifty_tracker()
+            
+            return success_response({
+                'symbol': 'NIFTY',
+                'candles': candles,
+                'interval': interval,
+                'current_price': nifty_tracker.current_price,
+                'open_price': nifty_tracker.open_price,
+                'day_high': nifty_tracker.day_high,
+                'day_low': nifty_tracker.day_low,
+                'trend': nifty_tracker.trend,
+                'timestamp': nifty_tracker.last_update.isoformat() if nifty_tracker.last_update else None
+            })
+            
+        except Exception as e:
+            logger.error(f"Error fetching Nifty 50 chart data: {e}")
+            return error_response(f"Error fetching chart data: {str(e)}")
     
     # ==================== Stock Chart Data ====================
     
