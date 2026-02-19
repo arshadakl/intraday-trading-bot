@@ -1,21 +1,30 @@
 """Pre-Open Gap Stock Picker - Stock selection for 3-Minute Strategy
 
-This stock picker is specifically designed for the "3 Minute Strategy" which:
-1. Fetches pre-open market data from NSE after 9:10 AM (when IEP is finalized)
-2. Identifies stocks with significant gap-up (bullish) or gap-down (bearish) openings
-3. Selects the best candidates based on gap size, volume, and other factors
-4. Monitors for confirmation signals (candle breakout) after market opens
+MEAN REVERSION STRATEGY - Fade the Gap
+=======================================
+
+This picker is designed for the "3 Minute Strategy" which uses MEAN REVERSION:
+- Gap UP stocks → We SHORT them (expect price to revert down)
+- Gap DOWN stocks → We LONG them (expect price to revert up)
+
+Signal Semantics (IMPORTANT):
+- BULLISH signal = Stock gapped DOWN → LONG on breakout above reference high
+- BEARISH signal = Stock gapped UP → SHORT on breakdown below reference low
+
+Internal naming (for selection purposes):
+- bullish_candidates = Stocks that gapped UP (we will SHORT these)
+- bearish_candidates = Stocks that gapped DOWN (we will LONG these)
 
 NSE Pre-Open Timeline:
 - 9:00-9:08 AM: Order entry period (data changes frequently)
 - 9:08-9:10 AM: Order matching period (final price being determined)
-- 9:10-9:15 AM: Final IEP available, data is stable (fetch data here)
+- 9:10-9:15 AM: Final IEP available, data is STABLE (fetch data here)
 
-The picker is different from other pickers because it:
-- Sources data from NSE pre-open API (not broker historical data)
-- Waits until 9:10 AM for final IEP data before selecting stocks
-- Prioritizes gap percentage as the primary selection criterion
-- Works in two phases: Pre-open (stock picking) and Post-open (confirmation)
+The picker:
+1. Fetches NSE pre-open data after 9:10 AM (when IEP is finalized)
+2. Identifies stocks with significant gap-up or gap-down openings
+3. Selects the best candidates based on gap size, volume, and other factors
+4. Assigns correct signals for mean reversion (fade the gap)
 """
 
 from typing import Dict, List, Optional
@@ -326,24 +335,38 @@ class PreOpenGapPicker(BaseStockPicker):
     def get_watchlist(self) -> List[Dict]:
         """
         Get combined watchlist of all gap candidates for monitoring.
-        
+
+        MEAN REVERSION SIGNAL ASSIGNMENT:
+        - Gap UP stocks (bullish_candidates): These gapped UP, so we FADE the gap
+          → BEARISH signal → SHORT position (expect price to revert down)
+        - Gap DOWN stocks (bearish_candidates): These gapped DOWN, so we FADE the gap
+          → BULLISH signal → LONG position (expect price to revert up)
+
         Returns:
-            List of all candidates (bullish + bearish) with signal type
+            List of all candidates with correct signal type for mean reversion
         """
         watchlist = []
-        
+
+        # Gap UP stocks: We SHORT them (mean reversion - fade the gap)
+        # They are "bullish_candidates" because they showed bullish gap behavior,
+        # but we assign BEARISH signal because we expect mean reversion (price drop)
         for stock in self.bullish_candidates:
             stock_copy = stock.copy()
-            stock_copy['signal_type'] = 'BULLISH'
-            stock_copy['trade_direction'] = 'LONG'
+            stock_copy['signal_type'] = 'BEARISH'  # SHORT on breakdown below reference low
+            stock_copy['trade_direction'] = 'SHORT'
+            stock_copy['gap_type'] = 'GAP_UP'
             watchlist.append(stock_copy)
-        
+
+        # Gap DOWN stocks: We LONG them (mean reversion - fade the gap)
+        # They are "bearish_candidates" because they showed bearish gap behavior,
+        # but we assign BULLISH signal because we expect mean reversion (price rise)
         for stock in self.bearish_candidates:
             stock_copy = stock.copy()
-            stock_copy['signal_type'] = 'BEARISH'
-            stock_copy['trade_direction'] = 'SHORT'
+            stock_copy['signal_type'] = 'BULLISH'  # LONG on breakout above reference high
+            stock_copy['trade_direction'] = 'LONG'
+            stock_copy['gap_type'] = 'GAP_DOWN'
             watchlist.append(stock_copy)
-        
+
         return watchlist
     
     def map_to_broker_format(self, nifty50_stocks: List[Dict]) -> List[Dict]:

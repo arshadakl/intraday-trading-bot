@@ -179,8 +179,8 @@ function setLoading(button, loading, text) {
 
 function startTimer(seconds) {
     codeExpiresAt = Date.now() + (seconds * 1000);
-    btnResend.classList.add('hidden');
-    resendTimer.classList.remove('hidden');
+    if (btnResend) btnResend.classList.add('hidden');
+    if (resendTimer) resendTimer.classList.remove('hidden');
     
     if (timerInterval) clearInterval(timerInterval);
     
@@ -192,13 +192,14 @@ function updateTimer() {
     const remaining = Math.max(0, codeExpiresAt - Date.now());
     const minutes = Math.floor(remaining / 60000);
     const secs = Math.floor((remaining % 60000) / 1000);
-    
-    timerValue.textContent = `${minutes}:${secs.toString().padStart(2, '0')}`;
+    if (timerValue) {
+        timerValue.textContent = `${minutes}:${secs.toString().padStart(2, '0')}`;
+    }
     
     if (remaining <= 0) {
         clearInterval(timerInterval);
-        resendTimer.classList.add('hidden');
-        btnResend.classList.remove('hidden');
+        if (resendTimer) resendTimer.classList.add('hidden');
+        if (btnResend) btnResend.classList.remove('hidden');
         showMessage(messageVerify, 'Code expired. Please request a new one.', 'error');
     }
 }

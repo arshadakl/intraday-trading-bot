@@ -1,4 +1,4 @@
-"""Main Trading Bot Orchestrator - Controls all components"""
+﻿"""Main Trading Bot Orchestrator - Controls all components"""
 
 import json
 import time
@@ -40,6 +40,7 @@ class TradingBot:
         self.angel_client: Optional[AngelOneClient] = None
         self.paper_trader: Optional[PaperTrader] = None
         self.websocket: Optional[AngelWebSocket] = None
+        self.broker_connected: bool = False
         
         # Analysis components
         self.pre_market_analyzer: Optional[PreMarketAnalyzer] = None
@@ -94,7 +95,7 @@ class TradingBot:
         Path("data/reports").mkdir(parents=True, exist_ok=True)
         Path("logs").mkdir(parents=True, exist_ok=True)
         
-        logger.info("🤖 Trading Bot initialized")
+        logger.info("ðŸ¤– Trading Bot initialized")
         self._log_activity("SYSTEM", "Trading Bot initialized")
     
     def _log_activity(self, category: str, message: str, data: Dict = None) -> None:
@@ -187,35 +188,49 @@ class TradingBot:
         
         try:
             # 1. Initialize Angel One client
-            logger.info("📡 Connecting to Angel One...")
+            logger.info("ðŸ“¡ Connecting to Angel One...")
             self.angel_client = AngelOneClient()
             
-            if not self.angel_client.login():
-                logger.error("❌ Failed to login to Angel One")
-                self._log_activity("ERROR", "Failed to login to Angel One")
-                return False
-            
-            # Get account info
-            profile = self.angel_client.get_profile()
-            if profile:
-                logger.info(f"👤 Logged in as: {profile.get('name', 'Unknown')}")
-                self._log_activity("AUTH", f"Logged in as {profile.get('name')}")
-            
-            # 2. Get account balance
-            balance = self.angel_client.get_available_balance()
-            logger.info(f"💰 Account Balance: ₹{balance:,.2f}")
+            login_ok = False
+            try:
+                login_ok = self.angel_client.login()
+            except Exception as login_err:
+                logger.error(f"Broker login exception: {login_err}")
+                login_ok = False
+
+            if not login_ok:
+                if self.config.is_paper_mode:
+                    self.broker_connected = False
+                    balance = 0.0
+                    logger.warning("Broker login failed. Continuing in offline PAPER mode (no live websocket).")
+                    self._log_activity("MODE", "Offline paper mode: broker login unavailable")
+                else:
+                    logger.error("Failed to login to Angel One")
+                    self._log_activity("ERROR", "Failed to login to Angel One")
+                    return False
+            else:
+                self.broker_connected = True
+                # Get account info
+                profile = self.angel_client.get_profile()
+                if profile:
+                    logger.info(f"Logged in as: {profile.get('name', 'Unknown')}")
+                    self._log_activity("AUTH", f"Logged in as {profile.get('name')}")
+
+                # 2. Get account balance
+                balance = self.angel_client.get_available_balance()
+                logger.info(f"Account Balance: Rs{balance:,.2f}")
             
             # 3. Initialize paper trader if in paper mode
             if self.config.is_paper_mode:
                 # Use default balance if API returns 0 (e.g., due to rate limiting)
                 paper_balance = balance if balance > 0 else self.config.get("capital.default_paper_balance", 100000.0)
                 if balance <= 0:
-                    logger.warning(f"⚠️ API returned 0 balance, using default paper balance: ₹{paper_balance:,.2f}")
+                    logger.warning(f"âš ï¸ API returned 0 balance, using default paper balance: â‚¹{paper_balance:,.2f}")
                 self.paper_trader = PaperTrader(initial_balance=paper_balance)
-                logger.info(f"📝 Paper Trading Mode - Balance: ₹{paper_balance:,.2f}")
-                self._log_activity("MODE", f"Paper trading enabled with ₹{paper_balance:,.2f}")
+                logger.info(f"ðŸ“ Paper Trading Mode - Balance: â‚¹{paper_balance:,.2f}")
+                self._log_activity("MODE", f"Paper trading enabled with â‚¹{paper_balance:,.2f}")
             else:
-                logger.warning("⚠️ LIVE TRADING MODE - Real money will be used!")
+                logger.warning("âš ï¸ LIVE TRADING MODE - Real money will be used!")
                 self._log_activity("MODE", "LIVE TRADING MODE ENABLED", {"warning": True})
             
             # 4. Initialize analysis components
@@ -233,13 +248,13 @@ class TradingBot:
             
             active_strategy_name = self.config.get('active_strategy', 'three_minute')
             if not StrategyRegistry.is_registered(active_strategy_name):
-                logger.warning(f"⚠️ Strategy '{active_strategy_name}' not found, falling back to 'three_minute'")
+                logger.warning(f"âš ï¸ Strategy '{active_strategy_name}' not found, falling back to 'three_minute'")
                 active_strategy_name = 'three_minute'
             
             self.strategy = StrategyRegistry.get_strategy(active_strategy_name)
             self.current_strategy_name = active_strategy_name
             strategy_meta = StrategyRegistry.get_metadata(active_strategy_name)
-            logger.info(f"📈 Active Strategy: {strategy_meta.get('display_name', active_strategy_name)}")
+            logger.info(f"ðŸ“ˆ Active Strategy: {strategy_meta.get('display_name', active_strategy_name)}")
             self._log_activity("STRATEGY", f"Loaded strategy: {active_strategy_name}")
             
             # 6. Initialize risk manager
@@ -261,19 +276,19 @@ class TradingBot:
             
             # Update Nifty 50 list on startup (if not already updated today)
             try:
-                logger.info("📊 Checking Nifty 50 data freshness...")
+                logger.info("ðŸ“Š Checking Nifty 50 data freshness...")
                 self._update_nifty50_on_startup()
             except Exception as e:
-                logger.warning(f"⚠️ Could not update Nifty 50 on startup: {e}")
+                logger.warning(f"âš ï¸ Could not update Nifty 50 on startup: {e}")
             
             self.status = "READY"
-            logger.success("✅ Bot initialized successfully!")
+            logger.success("âœ… Bot initialized successfully!")
             self._log_activity("SYSTEM", "Bot initialized successfully")
             
             return True
             
         except Exception as e:
-            logger.error(f"❌ Initialization error: {e}")
+            logger.error(f"âŒ Initialization error: {e}")
             self._log_activity("ERROR", f"Initialization failed: {str(e)}")
             self.status = "STOPPED"
             return False
@@ -296,10 +311,10 @@ class TradingBot:
         paper_positions = self.paper_trader.get_positions()
         
         if not paper_positions:
-            logger.info("📂 No positions to sync from paper_trader")
+            logger.info("ðŸ“‚ No positions to sync from paper_trader")
             return
         
-        logger.info(f"🔄 Syncing {len(paper_positions)} position(s) from paper_trader to position_tracker")
+        logger.info(f"ðŸ”„ Syncing {len(paper_positions)} position(s) from paper_trader to position_tracker")
         
         for pos in paper_positions:
             self.position_tracker.add_position(
@@ -308,7 +323,8 @@ class TradingBot:
                 entry_price=pos['entry_price'],
                 quantity=pos['quantity'],
                 stop_loss=pos['stop_loss'],
-                target=pos['target']
+                target=pos['target'],
+                direction=pos.get('direction', 'LONG')
             )
             
             # Also add to selected_stocks so they get monitored
@@ -319,6 +335,7 @@ class TradingBot:
                     'entry_price': pos['entry_price'],
                     'stop_loss': pos['stop_loss'],
                     'target_price': pos['target'],
+                    'direction': pos.get('direction', 'LONG'),
                     'ltp': pos.get('current_price', pos['entry_price']),
                     'vwap': pos['entry_price'],  # Approximate
                     'rsi': 50,  # Neutral
@@ -326,7 +343,7 @@ class TradingBot:
                     'volume_ratio': 1.0
                 })
         
-        logger.success(f"✅ Synced {len(paper_positions)} position(s) - will be monitored on WebSocket connect")
+        logger.success(f"âœ… Synced {len(paper_positions)} position(s) - will be monitored on WebSocket connect")
         self._log_activity("SYNC", f"Restored {len(paper_positions)} persisted position(s)")
 
     # ==================== Market Analysis ====================
@@ -337,14 +354,14 @@ class TradingBot:
         Called before market opens (e.g., 8:30 AM) or on late startup.
         """
         logger.info("=" * 60)
-        logger.info("📊 MARKET ANALYSIS - STOCK SELECTION")
+        logger.info("ðŸ“Š MARKET ANALYSIS - STOCK SELECTION")
         logger.info("=" * 60)
         self._log_activity("ANALYSIS", "Starting market analysis")
         
         try:
             # [FIX] Check if using 3-Minute Strategy and use pre-open gap picker
             if self.strategy and self.strategy.name == "three_minute":
-                logger.info("🎯 3-Minute Strategy detected - Using NSE Pre-Open Gap Picker")
+                logger.info("ðŸŽ¯ 3-Minute Strategy detected - Using NSE Pre-Open Gap Picker")
                 from src.analysis.base_stock_picker import StockPickerRegistry
                 picker = StockPickerRegistry.get_picker("preopen_gap")
                 if picker:
@@ -352,12 +369,12 @@ class TradingBot:
                     if success:
                         return self.selected_stocks
                     else:
-                        logger.warning("⚠️ Pre-open gap picker failed, falling back to standard analysis")
+                        logger.warning("âš ï¸ Pre-open gap picker failed, falling back to standard analysis")
                 else:
-                    logger.warning("⚠️ Pre-open gap picker not found, falling back to standard analysis")
+                    logger.warning("âš ï¸ Pre-open gap picker not found, falling back to standard analysis")
             
             # Get all Nifty 50 stocks with their technical indicators
-            logger.info("🔍 Analyzing Nifty 50 stocks...")
+            logger.info("ðŸ” Analyzing Nifty 50 stocks...")
             analyzed_stocks = self.pre_market_analyzer.analyze_all_stocks()
             
             # Update market analysis for dashboard
@@ -367,7 +384,7 @@ class TradingBot:
             # [FIX] Check if analysis returned no stocks (API failure scenario)
             if not analyzed_stocks or len(analyzed_stocks) == 0:
                 error_msg = "Market analysis failed - No stocks could be analyzed. API rate limit or connection issue."
-                logger.error(f"❌ {error_msg}")
+                logger.error(f"âŒ {error_msg}")
                 self._log_activity("ERROR", error_msg)
                 self.market_analysis["trading_suitable"] = False
                 self.market_analysis["reason"] = error_msg
@@ -376,7 +393,7 @@ class TradingBot:
                 return []
             
             # Score and rank stocks using the StockScorer
-            logger.info("📊 Scoring and ranking stocks...")
+            logger.info("ðŸ“Š Scoring and ranking stocks...")
             scored_stocks = self.stock_scorer.rank_stocks(analyzed_stocks)
             
             # Select top N stocks
@@ -384,10 +401,10 @@ class TradingBot:
             self.selected_stocks = scored_stocks[:max_stocks]
             
             if self.selected_stocks:
-                logger.info(f"✅ Found {len(scored_stocks)} stocks, selected top {len(self.selected_stocks)}")
+                logger.info(f"âœ… Found {len(scored_stocks)} stocks, selected top {len(self.selected_stocks)}")
                 logger.info("")
                 logger.info("=" * 60)
-                logger.info("📋 SELECTED STOCKS FOR TRADING")
+                logger.info("ðŸ“‹ SELECTED STOCKS FOR TRADING")
                 logger.info("=" * 60)
                 
                 # Log selected stocks with detailed info
@@ -403,19 +420,19 @@ class TradingBot:
                     composite_score = stock.get('composite_score', 0)
                     
                     logger.info(f"")
-                    logger.info(f"📌 STOCK #{i}: {stock['symbol']}")
-                    logger.info(f"   ├─ Composite Score: {composite_score:.2f}")
-                    logger.info(f"   ├─ LTP         : ₹{ltp:.2f}")
-                    logger.info(f"   ├─ Entry Price : ₹{entry:.2f}")
+                    logger.info(f"ðŸ“Œ STOCK #{i}: {stock['symbol']}")
+                    logger.info(f"   â”œâ”€ Composite Score: {composite_score:.2f}")
+                    logger.info(f"   â”œâ”€ LTP         : â‚¹{ltp:.2f}")
+                    logger.info(f"   â”œâ”€ Entry Price : â‚¹{entry:.2f}")
                     sl_pct = abs(entry - stop_loss) / entry * 100 if entry > 0 else 0
                     target_pct = abs(target - entry) / entry * 100 if entry > 0 else 0
                     
-                    logger.info(f"   ├─ Stop Loss   : ₹{stop_loss:.2f} ({sl_pct:.2f}%)")
-                    logger.info(f"   └─ Target      : ₹{target:.2f} ({target_pct:.2f}%)")
+                    logger.info(f"   â”œâ”€ Stop Loss   : â‚¹{stop_loss:.2f} ({sl_pct:.2f}%)")
+                    logger.info(f"   â””â”€ Target      : â‚¹{target:.2f} ({target_pct:.2f}%)")
                     
                     self._log_activity(
                         "SELECTION",
-                        f"Selected {stock['symbol']} (Score: {composite_score:.1f}) - Entry: ₹{entry:.2f}, SL: ₹{stop_loss:.2f}, Target: ₹{target:.2f}",
+                        f"Selected {stock['symbol']} (Score: {composite_score:.1f}) - Entry: â‚¹{entry:.2f}, SL: â‚¹{stop_loss:.2f}, Target: â‚¹{target:.2f}",
                         {
                             "symbol": stock['symbol'],
                             "composite_score": composite_score,
@@ -438,14 +455,14 @@ class TradingBot:
                             from src.analysis.indicators import prepare_dataframe
                             df = prepare_dataframe(hist_df)
                             self.live_indicators.update(stock['symbol'], {'ltp': ltp}, df)
-                            logger.info(f"   └─ Seeded live indicators with historical data")
+                            logger.info(f"   â””â”€ Seeded live indicators with historical data")
                     except Exception as e:
-                        logger.warning(f"   └─ Failed to seed live indicators: {e}")
+                        logger.warning(f"   â””â”€ Failed to seed live indicators: {e}")
                 
                 logger.info("")
                 logger.info("=" * 60)
             else:
-                logger.warning("⚠️ No stocks met the selection criteria")
+                logger.warning("âš ï¸ No stocks met the selection criteria")
             
             # Store analyzed stocks for dashboard
             self.market_analysis["stocks"] = [
@@ -475,7 +492,7 @@ class TradingBot:
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
-            logger.error(f"❌ Market analysis error: {e}")
+            logger.error(f"âŒ Market analysis error: {e}")
             logger.debug(f"Full traceback:\n{error_details}")
             self._log_activity("ERROR", f"Market analysis failed: {str(e)}")
             
@@ -518,14 +535,14 @@ class TradingBot:
                     
                     # [CRITICAL] Safety check for indicators
                     if not isinstance(indicators, dict):
-                        logger.error(f"❌ {symbol}: indicators is {type(indicators)} instead of dict. Content: {indicators}")
+                        logger.error(f"âŒ {symbol}: indicators is {type(indicators)} instead of dict. Content: {indicators}")
                         return
                         
                     # Update stock_info with latest indicators for dashboard/logging
                     try:
                         stock_info.update(indicators)
                     except Exception as e:
-                        logger.debug(f"⚠️ {symbol}: Info update skipped: {e}")
+                        logger.debug(f"âš ï¸ {symbol}: Info update skipped: {e}")
                     
                     signal = self.strategy.check_entry_signal(stock_info, current_price, indicators)
                     can_trade, reason = self.risk_manager.can_trade()
@@ -536,14 +553,14 @@ class TradingBot:
                             is_pending = any(o['symbol'] == symbol for o in self.pending_orders.values())
                         
                         if is_pending:
-                            logger.debug(f"⏳ Skipping entry for {symbol}: Order already pending")
+                            logger.debug(f"â³ Skipping entry for {symbol}: Order already pending")
                             return
                             
                         # [CRITICAL] Check exit cooldown
                         last_exit = self._last_exit_time.get(symbol)
                         if last_exit:
                             if (now_ist() - last_exit).total_seconds() < (self._exit_cooldown_minutes * 60):
-                                logger.debug(f"⏳ Skipping entry for {symbol}: In exit cooldown")
+                                logger.debug(f"â³ Skipping entry for {symbol}: In exit cooldown")
                                 return
                         
                         success = self._execute_entry(stock_info, signal)
@@ -558,7 +575,7 @@ class TradingBot:
                 indicators = self.live_indicators.update(symbol, price_data)
                 
                 if not isinstance(indicators, dict):
-                    logger.error(f"❌ {symbol}: exit indicators is {type(indicators)}. Content: {indicators}")
+                    logger.error(f"âŒ {symbol}: exit indicators is {type(indicators)}. Content: {indicators}")
                     return
                 
                 # Update stock_info if it exists for this symbol (optional but good for dashboard)
@@ -602,22 +619,34 @@ class TradingBot:
         )
         
         if quantity <= 0:
-            logger.warning(f"⚠️ Cannot calculate position size for {symbol}")
+            logger.warning(f"âš ï¸ Cannot calculate position size for {symbol}")
             return False
         
-        # Place order
-        order_result = self.order_manager.place_buy_order(
-            symbol=symbol,
-            token=stock['token'],
-            price=entry_price,
-            quantity=quantity,
-            stop_loss=stop_loss,
-            target=target
-        )
+        # Place order based on direction
+        if direction == 'SHORT':
+            order_result = self.order_manager.place_short_order(
+                symbol=symbol,
+                token=stock['token'],
+                price=entry_price,
+                quantity=quantity,
+                stop_loss=stop_loss,
+                target=target
+            )
+        else:
+            order_result = self.order_manager.place_buy_order(
+                symbol=symbol,
+                token=stock['token'],
+                price=entry_price,
+                quantity=quantity,
+                stop_loss=stop_loss,
+                target=target
+            )
         
         if order_result.get('status') == 'FILLED':
             # Track position immediately if filled
-            self._add_to_tracker(symbol, stock, entry_price, quantity, stop_loss, target)
+            self._add_to_tracker(symbol, stock, entry_price, quantity, stop_loss, target, direction)
+            if hasattr(self.strategy, "on_entry_filled"):
+                self.strategy.on_entry_filled(symbol)
             return True
             
         elif order_result.get('status') == 'PLACED':
@@ -632,14 +661,15 @@ class TradingBot:
                         'quantity': quantity,
                         'stop_loss': stop_loss,
                         'target': target,
+                        'direction': direction,
                         'placed_at': now_ist()
                     }
-                logger.info(f"⏳ Order {order_id} PLACED - Waiting for fill...")
+                logger.info(f"â³ Order {order_id} PLACED - Waiting for fill...")
                 return True
         
         return False
         
-    def _add_to_tracker(self, symbol, stock, entry_price, quantity, stop_loss, target):
+    def _add_to_tracker(self, symbol, stock, entry_price, quantity, stop_loss, target, direction="LONG"):
         """Helper to add a filled position to the tracker"""
         self.position_tracker.add_position(
             symbol=symbol,
@@ -647,14 +677,15 @@ class TradingBot:
             entry_price=entry_price,
             quantity=quantity,
             stop_loss=stop_loss,
-            target=target
+            target=target,
+            direction=direction
         )
         self.daily_stats['trades'] += 1
         
         self._log_activity(
             "TRADE",
-            f"BUY {quantity} {symbol} @ ₹{entry_price:.2f}",
-            {"stop_loss": stop_loss, "target": target}
+            f"{direction} ENTRY {quantity} {symbol} @ Rs{entry_price:.2f}",
+            {"stop_loss": stop_loss, "target": target, "direction": direction}
         )
 
     def _poll_pending_orders(self) -> None:
@@ -662,7 +693,7 @@ class TradingBot:
         if not self.pending_orders:
             return
             
-        logger.debug(f"🔍 Polling {len(self.pending_orders)} pending orders")
+        logger.debug(f"ðŸ” Polling {len(self.pending_orders)} pending orders")
         
         with self._pending_lock:
             order_ids = list(self.pending_orders.keys())
@@ -679,20 +710,23 @@ class TradingBot:
                     with self._pending_lock:
                         details = self.pending_orders.pop(order_id)
                         
-                    logger.success(f"✅ Order {order_id} FILLED for {details['symbol']}")
+                    logger.success(f"âœ… Order {order_id} FILLED for {details['symbol']}")
                     self._add_to_tracker(
                         details['symbol'],
                         details['stock_info'],
                         details['entry_price'],
                         details['quantity'],
                         details['stop_loss'],
-                        details['target']
+                        details['target'],
+                        details.get('direction', 'LONG')
                     )
+                    if hasattr(self.strategy, "on_entry_filled"):
+                        self.strategy.on_entry_filled(details['symbol'])
                     
                 elif status in ['REJECTED', 'CANCELLED']:
                     with self._pending_lock:
                         details = self.pending_orders.pop(order_id)
-                    logger.warning(f"❌ Order {order_id} for {details['symbol']} was {status}")
+                    logger.warning(f"âŒ Order {order_id} for {details['symbol']} was {status}")
                     self._log_activity("ORDER", f"Order {order_id} {status}", {"symbol": details['symbol']})
                     
                 # Handle timeout (optional) - check within lock to avoid race condition
@@ -702,7 +736,7 @@ class TradingBot:
                             placed_at = self.pending_orders[order_id].get('placed_at')
                             if placed_at and (now_ist() - placed_at).total_seconds() > 300:  # 5 mins
                                 details = self.pending_orders.pop(order_id)
-                                logger.warning(f"⏰ Order {order_id} TIMEOUT - Removing from tracking")
+                                logger.warning(f"â° Order {order_id} TIMEOUT - Removing from tracking")
                     
             except Exception as e:
                 logger.error(f"Error polling order {order_id}: {e}")
@@ -715,34 +749,47 @@ class TradingBot:
         positions_count = len(self.position_tracker.get_all_positions()) if self.position_tracker else 0
         
         status_emoji = {
-            "TRADING": "🟢",
-            "READY_TO_TRADE": "🟡",
-            "WAITING_FOR_ANALYSIS": "🟠",
-            "MONITORING_ONLY": "🔵",
-            "MARKET_CLOSING": "🟣",
-            "ANALYSIS_COMPLETE": "⚪",
-            "NON_MARKET": "⚫"
+            "TRADING": "ðŸŸ¢",
+            "READY_TO_TRADE": "ðŸŸ¡",
+            "WAITING_FOR_ANALYSIS": "ðŸŸ ",
+            "MONITORING_ONLY": "ðŸ”µ",
+            "MARKET_CLOSING": "ðŸŸ£",
+            "ANALYSIS_COMPLETE": "âšª",
+            "NON_MARKET": "âš«"
         }
         
-        emoji = status_emoji.get(mode, "⚪")
-        logger.info(f"{emoji} Heartbeat: Bot is running | Mode: {mode} | Positions: {positions_count} | P&L: ₹{self.daily_stats.get('pnl', 0):+.2f}")
+        emoji = status_emoji.get(mode, "âšª")
+        logger.info(f"{emoji} Heartbeat: Bot is running | Mode: {mode} | Positions: {positions_count} | P&L: â‚¹{self.daily_stats.get('pnl', 0):+.2f}")
     
     def _execute_exit(self, position: Dict, signal: Dict, price: float) -> None:
         """Execute an exit order"""
         symbol = position['symbol']
         reason = signal['reason']
-        
-        order_result = self.order_manager.place_sell_order(
-            symbol=symbol,
-            token=position['token'],
-            price=price,
-            quantity=position['quantity'],
-            reason=reason
-        )
+        direction = position.get('direction', 'LONG')
+
+        if direction == 'SHORT':
+            order_result = self.order_manager.place_cover_order(
+                symbol=symbol,
+                token=position['token'],
+                price=price,
+                quantity=position['quantity'],
+                reason=reason
+            )
+        else:
+            order_result = self.order_manager.place_sell_order(
+                symbol=symbol,
+                token=position['token'],
+                price=price,
+                quantity=position['quantity'],
+                reason=reason
+            )
         
         if order_result.get('status') in ['FILLED', 'PLACED']:
             # Calculate P&L
-            pnl = (price - position['entry_price']) * position['quantity']
+            if direction == 'SHORT':
+                pnl = (position['entry_price'] - price) * position['quantity']
+            else:
+                pnl = (price - position['entry_price']) * position['quantity']
             self.daily_stats['pnl'] += pnl
             
             if pnl >= 0:
@@ -760,8 +807,8 @@ class TradingBot:
             
             self._log_activity(
                 "TRADE",
-                f"SELL {position['quantity']} {symbol} @ ₹{price:.2f} | P&L: ₹{pnl:+.2f}",
-                {"reason": reason, "pnl": pnl}
+                f"{direction} EXIT {position['quantity']} {symbol} @ â‚¹{price:.2f} | P&L: â‚¹{pnl:+.2f}",
+                {"reason": reason, "pnl": pnl, "direction": direction}
             )
             
             # Set exit time for cooldown tracking
@@ -769,7 +816,7 @@ class TradingBot:
     
     def square_off_all(self) -> None:
         """Square off all open positions (called at 3:15 PM)"""
-        logger.info("🔴 Squaring off all positions...")
+        logger.info("ðŸ”´ Squaring off all positions...")
         self._log_activity("SYSTEM", "Initiating square off of all positions")
         
         positions = self.position_tracker.get_all_positions()
@@ -788,7 +835,7 @@ class TradingBot:
                         current_price
                     )
         
-        logger.info("✅ All positions squared off")
+        logger.info("âœ… All positions squared off")
         self._log_activity("SYSTEM", "All positions squared off")
     
     # ==================== Bot Control ====================
@@ -796,7 +843,7 @@ class TradingBot:
     def start(self) -> bool:
         """Start the trading bot with smart startup based on current time"""
         if self.status == "RUNNING":
-            logger.warning("⚠️ Bot is already running")
+            logger.warning("âš ï¸ Bot is already running")
             return False
         
         if self.status != "READY":
@@ -837,12 +884,12 @@ class TradingBot:
             # Started before 8:30 AM - PRE_MARKET mode
             self.startup_mode = "PRE_MARKET"
             logger.info("=" * 60)
-            logger.info("🌅 STARTUP MODE: PRE-MARKET")
+            logger.info("ðŸŒ… STARTUP MODE: PRE-MARKET")
             logger.info("=" * 60)
-            logger.info(f"⏰ Current Time: {now.strftime('%H:%M:%S')}")
-            logger.info(f"📋 Pre-market analysis will run at: {timing.get('analysis_start', '08:30')}")
-            logger.info(f"📊 Trading will start at: {timing.get('trading_start', '09:15')}")
-            logger.info("✅ Bot will follow normal schedule")
+            logger.info(f"â° Current Time: {now.strftime('%H:%M:%S')}")
+            logger.info(f"ðŸ“‹ Pre-market analysis will run at: {timing.get('analysis_start', '08:30')}")
+            logger.info(f"ðŸ“Š Trading will start at: {timing.get('trading_start', '09:15')}")
+            logger.info("âœ… Bot will follow normal schedule")
             self._log_activity("STARTUP", "Pre-market mode - Normal schedule", {
                 "mode": "PRE_MARKET",
                 "description": "Bot started before market. Will follow normal schedule."
@@ -852,12 +899,12 @@ class TradingBot:
             # Started between 8:30 AM and 9:15 AM - Run analysis now, wait for market
             self.startup_mode = "PRE_MARKET"
             logger.info("=" * 60)
-            logger.info("🌅 STARTUP MODE: PRE-MARKET (Analysis Window)")
+            logger.info("ðŸŒ… STARTUP MODE: PRE-MARKET (Analysis Window)")
             logger.info("=" * 60)
-            logger.info(f"⏰ Current Time: {now.strftime('%H:%M:%S')}")
-            logger.info("📋 Running pre-market analysis now")
-            logger.info(f"📊 Trading will start at: {timing.get('trading_start', '09:15')}")
-            logger.info("✅ Scheduler will start trading at market open")
+            logger.info(f"â° Current Time: {now.strftime('%H:%M:%S')}")
+            logger.info("ðŸ“‹ Running pre-market analysis now")
+            logger.info(f"ðŸ“Š Trading will start at: {timing.get('trading_start', '09:15')}")
+            logger.info("âœ… Scheduler will start trading at market open")
             self._log_activity("STARTUP", "Pre-market analysis mode - Trade at open", {
                 "mode": "PRE_MARKET",
                 "description": "Bot started during analysis window. Will analyze now, trade at market open."
@@ -867,11 +914,11 @@ class TradingBot:
             # Started during market hours (9:15 AM - 3:00 PM)
             self.startup_mode = "MARKET_HOURS"
             logger.info("=" * 60)
-            logger.info("📈 STARTUP MODE: MARKET HOURS - ACTIVE TRADING")
+            logger.info("ðŸ“ˆ STARTUP MODE: MARKET HOURS - ACTIVE TRADING")
             logger.info("=" * 60)
-            logger.info(f"⏰ Current Time: {now.strftime('%H:%M:%S')}")
-            logger.info("🔍 Will analyze market immediately and trade if suitable")
-            logger.info(f"⏳ Trading allowed until: {timing.get('no_new_trade_after', '15:00')}")
+            logger.info(f"â° Current Time: {now.strftime('%H:%M:%S')}")
+            logger.info("ðŸ” Will analyze market immediately and trade if suitable")
+            logger.info(f"â³ Trading allowed until: {timing.get('no_new_trade_after', '15:00')}")
             self._log_activity("STARTUP", "Market hours mode - Immediate analysis", {
                 "mode": "MARKET_HOURS",
                 "description": "Bot started during market hours. Analyzing immediately for trade opportunities."
@@ -881,11 +928,11 @@ class TradingBot:
             # Started after 3:00 PM but before 3:30 PM - Late to trade
             self.startup_mode = "NON_MARKET"
             logger.info("=" * 60)
-            logger.info("🌆 STARTUP MODE: NON-MARKET (Too Late)")
+            logger.info("ðŸŒ† STARTUP MODE: NON-MARKET (Too Late)")
             logger.info("=" * 60)
-            logger.info(f"⏰ Current Time: {now.strftime('%H:%M:%S')}")
-            logger.info("⚠️ Too late for new trades today (after 3:00 PM)")
-            logger.info("📊 Will analyze stocks for tomorrow's reference")
+            logger.info(f"â° Current Time: {now.strftime('%H:%M:%S')}")
+            logger.info("âš ï¸ Too late for new trades today (after 3:00 PM)")
+            logger.info("ðŸ“Š Will analyze stocks for tomorrow's reference")
             self._log_activity("STARTUP", "Non-market mode - Analysis only", {
                 "mode": "NON_MARKET",
                 "description": "Too late for trading. Analyzing for reference only."
@@ -895,11 +942,11 @@ class TradingBot:
             # Started outside market hours (before 8:30 AM or after 3:30 PM)
             self.startup_mode = "NON_MARKET"
             logger.info("=" * 60)
-            logger.info("🌙 STARTUP MODE: NON-MARKET (Outside Hours)")
+            logger.info("ðŸŒ™ STARTUP MODE: NON-MARKET (Outside Hours)")
             logger.info("=" * 60)
-            logger.info(f"⏰ Current Time: {now.strftime('%H:%M:%S')}")
-            logger.info("📊 Market is closed. Will analyze stocks for reference")
-            logger.info("❌ No trading will occur")
+            logger.info(f"â° Current Time: {now.strftime('%H:%M:%S')}")
+            logger.info("ðŸ“Š Market is closed. Will analyze stocks for reference")
+            logger.info("âŒ No trading will occur")
             self._log_activity("STARTUP", "Non-market mode - Analysis only", {
                 "mode": "NON_MARKET",
                 "description": "Market is closed. Running analysis for reference only."
@@ -916,8 +963,8 @@ class TradingBot:
             
             if now >= analysis_time and now < market_open:
                 # In analysis window - run analysis now, scheduler will start trading at 9:15
-                logger.success("🚀 Trading bot started in PRE-MARKET mode (Analysis Window)!")
-                logger.info("🔍 Running pre-market analysis immediately...")
+                logger.success("ðŸš€ Trading bot started in PRE-MARKET mode (Analysis Window)!")
+                logger.info("ðŸ” Running pre-market analysis immediately...")
                 self._log_activity("SYSTEM", "Running pre-market analysis - trading will start at market open")
                 
                 # Run analysis immediately
@@ -925,25 +972,25 @@ class TradingBot:
                 
                 if self.selected_stocks:
                     logger.info("=" * 60)
-                    logger.info("📊 ANALYSIS COMPLETE - WAITING FOR MARKET OPEN")
+                    logger.info("ðŸ“Š ANALYSIS COMPLETE - WAITING FOR MARKET OPEN")
                     logger.info("=" * 60)
-                    logger.info(f"✅ Found {len(self.selected_stocks)} stocks - Trading will start at {timing.get('trading_start', '09:15')}")
+                    logger.info(f"âœ… Found {len(self.selected_stocks)} stocks - Trading will start at {timing.get('trading_start', '09:15')}")
                     self._log_activity("ANALYSIS", f"Analysis complete. {len(self.selected_stocks)} stocks selected. Waiting for market open.")
                     self.market_analysis["trading_suitable"] = True
                     self.market_analysis["reason"] = f"Analysis complete. Trading will start at {timing.get('trading_start', '09:15')}"
                 else:
-                    logger.warning("⚠️ No suitable stocks found for trading")
+                    logger.warning("âš ï¸ No suitable stocks found for trading")
                     self.market_analysis["trading_suitable"] = False
                     self.market_analysis["reason"] = "No stocks met selection criteria"
             else:
                 # Before analysis time - just wait
-                logger.success("🚀 Trading bot started in PRE-MARKET mode!")
-                logger.info("📅 Waiting for scheduled tasks...")
+                logger.success("ðŸš€ Trading bot started in PRE-MARKET mode!")
+                logger.info("ðŸ“… Waiting for scheduled tasks...")
                 self._log_activity("SYSTEM", f"Bot ready - Waiting for scheduled analysis at {timing.get('analysis_start', '08:30')}")
             
         elif self.startup_mode == "MARKET_HOURS":
-            logger.success("🚀 Trading bot started in MARKET HOURS mode!")
-            logger.info("🔍 Running immediate market analysis...")
+            logger.success("ðŸš€ Trading bot started in MARKET HOURS mode!")
+            logger.info("ðŸ” Running immediate market analysis...")
             self._log_activity("SYSTEM", "Starting immediate market analysis")
             
             # Run analysis immediately
@@ -952,13 +999,13 @@ class TradingBot:
             # Check if trading is suitable
             if self.selected_stocks:
                 logger.info("=" * 60)
-                logger.info("📊 ANALYSIS COMPLETE - TRADING DECISION")
+                logger.info("ðŸ“Š ANALYSIS COMPLETE - TRADING DECISION")
                 logger.info("=" * 60)
                 
                 can_trade, reason = self.risk_manager.can_trade()
                 
                 if can_trade:
-                    logger.success(f"✅ Trading conditions suitable! Monitoring {len(self.selected_stocks)} stocks")
+                    logger.success(f"âœ… Trading conditions suitable! Monitoring {len(self.selected_stocks)} stocks")
                     self._log_activity("TRADING", f"Starting live monitoring for {len(self.selected_stocks)} stocks")
                     
                     # Start WebSocket monitoring
@@ -967,19 +1014,19 @@ class TradingBot:
                     self.market_analysis["trading_suitable"] = True
                     self.market_analysis["reason"] = "Market conditions and stock analysis favorable for trading"
                 else:
-                    logger.warning(f"⚠️ Trading not possible: {reason}")
+                    logger.warning(f"âš ï¸ Trading not possible: {reason}")
                     self._log_activity("TRADING", f"Cannot trade: {reason}")
                     self.market_analysis["trading_suitable"] = False
                     self.market_analysis["reason"] = reason
             else:
-                logger.warning("⚠️ No suitable stocks found for trading")
+                logger.warning("âš ï¸ No suitable stocks found for trading")
                 self._log_activity("ANALYSIS", "No suitable stocks found for trading")
                 self.market_analysis["trading_suitable"] = False
                 self.market_analysis["reason"] = "No stocks met selection criteria"
                 
         elif self.startup_mode == "NON_MARKET":
-            logger.success("🚀 Trading bot started in NON-MARKET mode!")
-            logger.info("🔍 Running analysis for reference only...")
+            logger.success("ðŸš€ Trading bot started in NON-MARKET mode!")
+            logger.info("ðŸ” Running analysis for reference only...")
             self._log_activity("SYSTEM", "Running analysis for reference (no trading)")
             
             # Run analysis but don't start monitoring
@@ -987,16 +1034,16 @@ class TradingBot:
             
             if self.selected_stocks:
                 logger.info("=" * 60)
-                logger.info("📊 ANALYSIS COMPLETE - REFERENCE ONLY")
+                logger.info("ðŸ“Š ANALYSIS COMPLETE - REFERENCE ONLY")
                 logger.info("=" * 60)
-                logger.info(f"📋 Found {len(self.selected_stocks)} potential stocks for next session")
+                logger.info(f"ðŸ“‹ Found {len(self.selected_stocks)} potential stocks for next session")
                 self._log_activity("ANALYSIS", f"Reference analysis complete. {len(self.selected_stocks)} stocks identified for next session")
             else:
-                logger.info("📊 No stocks met criteria during analysis")
+                logger.info("ðŸ“Š No stocks met criteria during analysis")
                 
             self.market_analysis["trading_suitable"] = False
             self.market_analysis["reason"] = "Non-market hours - Analysis for reference only"
-            logger.info("❌ No trading will occur (market closed)")
+            logger.info("âŒ No trading will occur (market closed)")
 
     
     def _setup_schedule(self) -> None:
@@ -1074,7 +1121,7 @@ class TradingBot:
         
         # If file doesn't exist, definitely update
         if not nifty50_path.exists():
-            logger.warning("📊 Nifty 50 file not found - will update")
+            logger.warning("ðŸ“Š Nifty 50 file not found - will update")
             self._update_nifty50_from_nse()
             return
         
@@ -1086,7 +1133,7 @@ class TradingBot:
             last_updated_str = data.get('_updated')
             
             if not last_updated_str:
-                logger.warning("📊 Nifty 50 file has no update timestamp - will update")
+                logger.warning("ðŸ“Š Nifty 50 file has no update timestamp - will update")
                 self._update_nifty50_from_nse()
                 return
             
@@ -1096,13 +1143,13 @@ class TradingBot:
             
             # If last update was not today, update it
             if last_updated.date() < today:
-                logger.info(f"📊 Nifty 50 data is from {last_updated.date()} - updating now")
+                logger.info(f"ðŸ“Š Nifty 50 data is from {last_updated.date()} - updating now")
                 self._update_nifty50_from_nse()
             else:
-                logger.info(f"✅ Nifty 50 data is fresh (updated: {last_updated_str})")
+                logger.info(f"âœ… Nifty 50 data is fresh (updated: {last_updated_str})")
                 
         except Exception as e:
-            logger.warning(f"⚠️ Could not check Nifty 50 freshness: {e} - will update anyway")
+            logger.warning(f"âš ï¸ Could not check Nifty 50 freshness: {e} - will update anyway")
             self._update_nifty50_from_nse()
     
     def _update_nifty50_from_nse(self) -> None:
@@ -1119,7 +1166,7 @@ class TradingBot:
         from pathlib import Path
         
         logger.info("=" * 60)
-        logger.info("📊 UPDATING NIFTY 50 FROM NSE API")
+        logger.info("ðŸ“Š UPDATING NIFTY 50 FROM NSE API")
         logger.info("=" * 60)
         
         nifty50_path = Path("config/nifty50.json")
@@ -1130,29 +1177,29 @@ class TradingBot:
             success = update_nifty50_at_market_open()
             
             if success:
-                logger.info("✅ Nifty 50 list updated successfully from NSE API")
+                logger.info("âœ… Nifty 50 list updated successfully from NSE API")
                 self._log_activity("UPDATE", "Nifty 50 list updated from NSE API")
                 
                 # Reload config to get updated stock list
                 self.config.reload()
             else:
-                logger.warning("⚠️ Failed to fetch from NSE API")
+                logger.warning("âš ï¸ Failed to fetch from NSE API")
                 
                 # If file doesn't exist, create it with default data
                 if not nifty50_path.exists():
-                    logger.warning("📝 Creating default Nifty 50 file...")
+                    logger.warning("ðŸ“ Creating default Nifty 50 file...")
                     self._create_default_nifty50_file()
                 else:
-                    logger.info("📂 Using existing Nifty 50 data")
+                    logger.info("ðŸ“‚ Using existing Nifty 50 data")
                     self._log_activity("WARNING", "Nifty 50 update failed - using cached data")
                 
         except Exception as e:
-            logger.error(f"❌ Error updating Nifty 50: {e}")
+            logger.error(f"âŒ Error updating Nifty 50: {e}")
             self._log_activity("ERROR", f"Nifty 50 update error: {str(e)}")
             
             # Create default file if doesn't exist
             if not nifty50_path.exists():
-                logger.warning("📝 Creating default Nifty 50 file due to error...")
+                logger.warning("ðŸ“ Creating default Nifty 50 file due to error...")
                 self._create_default_nifty50_file()
     
     def _create_default_nifty50_file(self) -> None:
@@ -1167,7 +1214,7 @@ class TradingBot:
         from pathlib import Path
         from datetime import datetime
         
-        logger.info("📊 Attempting to fetch Nifty 50 data from NSE API...")
+        logger.info("ðŸ“Š Attempting to fetch Nifty 50 data from NSE API...")
         
         try:
             # Try to fetch from NSE Pre-Open API
@@ -1177,7 +1224,7 @@ class TradingBot:
             raw_data = fetcher.fetch_preopen_data()
             
             if raw_data and len(raw_data) > 0:
-                logger.info(f"✅ Fetched {len(raw_data)} stocks from NSE API")
+                logger.info(f"âœ… Fetched {len(raw_data)} stocks from NSE API")
                 
                 # Build stock list in NSE API order
                 stocks = []
@@ -1226,30 +1273,30 @@ class TradingBot:
                     with open(nifty50_path, 'w', encoding='utf-8') as f:
                         json.dump(nifty50_data, f, indent=2, ensure_ascii=False)
                     
-                    logger.info("🔄 Fetching tokens from Angel One...")
+                    logger.info("ðŸ”„ Fetching tokens from Angel One...")
                     token_result = token_fetcher.update_nifty50_tokens()
                     
                     if token_result.get('updated', 0) > 0:
-                        logger.info(f"✅ Updated {token_result['updated']} tokens")
+                        logger.info(f"âœ… Updated {token_result['updated']} tokens")
                     
                 except Exception as e:
-                    logger.warning(f"⚠️ Could not fetch tokens: {e}")
+                    logger.warning(f"âš ï¸ Could not fetch tokens: {e}")
                     # Still save the file without tokens
                     nifty50_path = Path("config/nifty50.json")
                     nifty50_path.parent.mkdir(parents=True, exist_ok=True)
                     with open(nifty50_path, 'w', encoding='utf-8') as f:
                         json.dump(nifty50_data, f, indent=2, ensure_ascii=False)
                 
-                logger.info(f"✅ Created Nifty 50 file with {len(stocks)} stocks from NSE API")
+                logger.info(f"âœ… Created Nifty 50 file with {len(stocks)} stocks from NSE API")
                 self._log_activity("SYSTEM", f"Created Nifty 50 file with {len(stocks)} stocks")
                 self.config.reload()
                 return
             
         except Exception as e:
-            logger.warning(f"⚠️ Could not fetch from NSE API: {e}")
+            logger.warning(f"âš ï¸ Could not fetch from NSE API: {e}")
         
         # If NSE fetch failed, create empty placeholder
-        logger.warning("📝 Creating empty placeholder - will be populated at 9:10 AM")
+        logger.warning("ðŸ“ Creating empty placeholder - will be populated at 9:10 AM")
         
         empty_data = {
             "stocks": [],
@@ -1265,13 +1312,13 @@ class TradingBot:
         with open(nifty50_path, 'w', encoding='utf-8') as f:
             json.dump(empty_data, f, indent=2, ensure_ascii=False)
         
-        logger.info("📝 Created empty Nifty 50 placeholder file")
+        logger.info("ðŸ“ Created empty Nifty 50 placeholder file")
         self._log_activity("SYSTEM", "Created empty Nifty 50 placeholder - awaiting 9:10 AM update")
         self.config.reload()
     
     def _reset_daily_state(self) -> None:
         """Reset daily state before market opens"""
-        logger.info("🔄 Resetting daily state...")
+        logger.info("ðŸ”„ Resetting daily state...")
         
         # Reset daily stats
         self.daily_stats = {
@@ -1286,7 +1333,7 @@ class TradingBot:
         # This ensures gap_signals are preserved for trading
         if (self.strategy and self.strategy.name == "three_minute" and 
             self.selected_stocks and hasattr(self.strategy, 'set_gap_candidates')):
-            logger.info("🎯 Re-setting gap candidates for 3-Minute Strategy after daily reset")
+            logger.info("ðŸŽ¯ Re-setting gap candidates for 3-Minute Strategy after daily reset")
             self.strategy.set_gap_candidates(self.selected_stocks)
         
         # Reset risk manager
@@ -1301,16 +1348,76 @@ class TradingBot:
             self.live_indicators.reset_all()
         
         self._log_activity("SYSTEM", "Daily state reset complete")
+
+    def _apply_three_minute_market_open_filter(self) -> None:
+        """Apply 9:15 AM direction filter (gap up/down/flat) for 3-minute strategy."""
+        if not self.strategy or self.strategy.name != "three_minute" or not self.selected_stocks:
+            return
+
+        try:
+            from src.analysis.daily_watchlist import get_watchlist_manager
+
+            manager = get_watchlist_manager()
+            watchlist = manager.get_watchlist()
+            if not watchlist:
+                watchlist = manager.generate_daily_watchlist()
+            if not watchlist:
+                return
+
+            nifty_gap_percent = 0.0
+            try:
+                with open("config/nifty50.json", "r", encoding="utf-8") as f:
+                    nifty_data = json.load(f)
+                idx = nifty_data.get("index", {})
+                prev_close = idx.get("prev_close")
+                open_price = idx.get("open") or idx.get("iep")
+                if prev_close and open_price:
+                    nifty_gap_percent = ((float(open_price) - float(prev_close)) / float(prev_close)) * 100
+            except Exception:
+                nifty_gap_percent = 0.0
+
+            strategy_params = self.config.get('strategies.three_minute.params', {})
+            max_trades = int(strategy_params.get('stocks_per_side', 4))
+            filtered = manager.filter_watchlist_at_market_open(nifty_gap_percent=nifty_gap_percent, max_trades=max_trades)
+            selected = filtered.get("selected_stocks")
+            if not selected:
+                return
+
+            if isinstance(selected, dict):
+                symbols = {s.get("symbol") for side in selected.values() for s in side}
+            else:
+                symbols = {s.get("symbol") for s in selected}
+            symbols.discard(None)
+            if not symbols:
+                return
+
+            before = len(self.selected_stocks)
+            self.selected_stocks = [s for s in self.selected_stocks if s.get("symbol") in symbols]
+            after = len(self.selected_stocks)
+            if after > 0 and hasattr(self.strategy, "set_gap_candidates"):
+                self.strategy.set_gap_candidates(self.selected_stocks)
+            logger.info(f"3-Minute market-open filter applied: {before} -> {after} stocks (Nifty gap {nifty_gap_percent:+.2f}%)")
+        except Exception as e:
+            logger.warning(f"Failed to apply 3-minute market-open filter: {e}")
     
     def _start_monitoring(self) -> None:
         """Start WebSocket monitoring for selected stocks"""
+        if not self.broker_connected:
+            logger.warning("Broker is offline. Skipping WebSocket monitoring in offline paper mode.")
+            return
+
         if not self.selected_stocks:
-            logger.warning("⚠️ No stocks selected for monitoring")
+            logger.warning("âš ï¸ No stocks selected for monitoring")
+            return
+
+        self._apply_three_minute_market_open_filter()
+        if not self.selected_stocks:
+            logger.warning("âš ï¸ No stocks left after market-open filter")
             return
         
         # Update startup_mode to MARKET_HOURS since we're now actively trading
         if self.startup_mode != "MARKET_HOURS":
-            logger.info("📈 Transitioning to MARKET_HOURS mode - Active trading begins")
+            logger.info("ðŸ“ˆ Transitioning to MARKET_HOURS mode - Active trading begins")
             self.startup_mode = "MARKET_HOURS"
             self.market_analysis["trading_suitable"] = True
             self.market_analysis["reason"] = "Market open - Active trading in progress"
@@ -1339,7 +1446,7 @@ class TradingBot:
         self.websocket.subscribe(tokens)
         self.websocket.connect()
         
-        logger.info(f"📡 WebSocket monitoring started for {len(tokens)} stocks")
+        logger.info(f"ðŸ“¡ WebSocket monitoring started for {len(tokens)} stocks")
         self._log_activity("TRADING", f"Active trading started - Monitoring {len(tokens)} stocks via WebSocket")
     
     def switch_strategy(self, strategy_name: str, force: bool = False, repick_stocks: bool = True) -> Dict[str, Any]:
@@ -1366,7 +1473,7 @@ class TradingBot:
         if not StrategyRegistry.is_registered(strategy_name):
             available = ", ".join(StrategyRegistry.list_strategies())
             result["message"] = f"Unknown strategy: '{strategy_name}'. Available: {available}"
-            logger.warning(f"⚠️ {result['message']}")
+            logger.warning(f"âš ï¸ {result['message']}")
             return result
         
         # Check if same strategy
@@ -1383,10 +1490,10 @@ class TradingBot:
                     f"Cannot switch strategy with {position_count} open position(s). "
                     "Close positions first or use force=True (dangerous!)"
                 )
-                logger.warning(f"⚠️ {result['message']}")
+                logger.warning(f"âš ï¸ {result['message']}")
                 return result
             elif position_count > 0 and force:
-                logger.warning(f"⚠️ Force-switching strategy with {position_count} open positions!")
+                logger.warning(f"âš ï¸ Force-switching strategy with {position_count} open positions!")
         
         # Check for pending orders
         with self._pending_lock:
@@ -1397,10 +1504,10 @@ class TradingBot:
                 f"Cannot switch strategy with {pending_count} pending order(s). "
                 "Wait for orders to complete/cancel or use force=True (dangerous!)"
             )
-            logger.warning(f"⚠️ {result['message']}")
+            logger.warning(f"âš ï¸ {result['message']}")
             return result
         elif pending_count > 0 and force:
-            logger.warning(f"⚠️ Force-switching strategy with {pending_count} pending orders!")
+            logger.warning(f"âš ï¸ Force-switching strategy with {pending_count} pending orders!")
         
         # Perform the switch
         try:
@@ -1421,7 +1528,7 @@ class TradingBot:
             except Exception as config_error:
                 # Attempt to roll back in-memory strategy to previous one
                 logger.error(
-                    f"❌ Failed to update active_strategy in config while switching from "
+                    f"âŒ Failed to update active_strategy in config while switching from "
                     f"{old_strategy} to {strategy_name}: {config_error}"
                 )
                 try:
@@ -1429,7 +1536,7 @@ class TradingBot:
                     self.strategy = StrategyRegistry.get_strategy(old_strategy)
                 except Exception as rollback_error:
                     logger.error(
-                        f"❌ Failed to roll back to previous strategy {old_strategy}: {rollback_error}"
+                        f"âŒ Failed to roll back to previous strategy {old_strategy}: {rollback_error}"
                     )
                 raise config_error
             
@@ -1438,7 +1545,7 @@ class TradingBot:
             
             # Log the switch
             logger.success(
-                f"✅ Strategy switched: {old_meta.get('display_name', old_strategy)} → "
+                f"âœ… Strategy switched: {old_meta.get('display_name', old_strategy)} â†’ "
                 f"{new_meta.get('display_name', strategy_name)}"
             )
             self._log_activity(
@@ -1456,7 +1563,7 @@ class TradingBot:
                         result["stocks_repicked"] = True
                         result["new_stocks"] = [s['symbol'] for s in self.selected_stocks]
                 except Exception as e:
-                    logger.warning(f"⚠️ Stock repicking failed: {e}")
+                    logger.warning(f"âš ï¸ Stock repicking failed: {e}")
                     result["stocks_repicked"] = False
                     result["repick_error"] = str(e)
             
@@ -1470,7 +1577,7 @@ class TradingBot:
             
         except Exception as e:
             result["message"] = f"Failed to switch strategy: {str(e)}"
-            logger.error(f"❌ {result['message']}")
+            logger.error(f"âŒ {result['message']}")
             return result
     
     def _repick_stocks_for_strategy(self, strategy_name: str) -> bool:
@@ -1493,7 +1600,7 @@ class TradingBot:
         from src.analysis.base_stock_picker import StockPickerRegistry
         
         logger.info("=" * 60)
-        logger.info(f"🔄 RE-PICKING STOCKS FOR {strategy_name.upper()} STRATEGY")
+        logger.info(f"ðŸ”„ RE-PICKING STOCKS FOR {strategy_name.upper()} STRATEGY")
         logger.info("=" * 60)
         
         try:
@@ -1501,18 +1608,18 @@ class TradingBot:
             picker_name = StrategyRegistry.get_stock_picker(strategy_name)
             picker = StockPickerRegistry.get_picker(picker_name)
             
-            logger.info(f"📊 Using stock picker: {picker_name}")
+            logger.info(f"ðŸ“Š Using stock picker: {picker_name}")
             
             # Special handling for preopen_gap picker (3-minute strategy)
             if picker_name == "preopen_gap":
                 return self._repick_with_preopen_gap_picker(picker)
             
             # Standard flow: Get fresh stock data using pre-market analyzer
-            logger.info("🔍 Fetching latest stock data...")
+            logger.info("ðŸ” Fetching latest stock data...")
             analyzed_stocks = self.pre_market_analyzer.analyze_all_stocks()
             
             if not analyzed_stocks:
-                logger.warning("⚠️ No stocks available for analysis")
+                logger.warning("âš ï¸ No stocks available for analysis")
                 return False
             
             # Use the strategy-specific picker to select stocks
@@ -1520,7 +1627,7 @@ class TradingBot:
             selected = picker.select_top_stocks(analyzed_stocks, n=max_stocks)
             
             if not selected:
-                logger.warning(f"⚠️ {picker_name} picker found no suitable stocks")
+                logger.warning(f"âš ï¸ {picker_name} picker found no suitable stocks")
                 return False
             
             # Store old stocks for logging
@@ -1536,13 +1643,13 @@ class TradingBot:
             
             new_symbols = [s['symbol'] for s in self.selected_stocks]
             
-            logger.info(f"✅ Selected {len(self.selected_stocks)} stocks using {picker_name} picker:")
+            logger.info(f"âœ… Selected {len(self.selected_stocks)} stocks using {picker_name} picker:")
             for i, stock in enumerate(self.selected_stocks, 1):
                 score = stock.get('picker_score', stock.get('composite_score', 0))
                 logger.info(f"   {i}. {stock['symbol']} (Score: {score:.1f})")
             
             if old_symbols != new_symbols:
-                logger.info(f"📝 Stock change: {old_symbols} → {new_symbols}")
+                logger.info(f"ðŸ“ Stock change: {old_symbols} â†’ {new_symbols}")
             
             self._log_activity(
                 "REPICK",
@@ -1565,14 +1672,14 @@ class TradingBot:
             
             # If WebSocket is connected, update subscriptions
             if self.websocket and hasattr(self.websocket, 'is_connected') and self.websocket.is_connected:
-                logger.info("🔄 Updating WebSocket subscriptions for new stocks...")
+                logger.info("ðŸ”„ Updating WebSocket subscriptions for new stocks...")
                 self._restart_monitoring_with_new_stocks()
             
             logger.info("=" * 60)
             return True
             
         except Exception as e:
-            logger.error(f"❌ Error repicking stocks: {e}")
+            logger.error(f"âŒ Error repicking stocks: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -1590,17 +1697,17 @@ class TradingBot:
         Returns:
             True if stocks were successfully selected
         """
-        logger.info("📊 Using NSE Pre-Open Data for 3-Minute Strategy")
+        logger.info("ðŸ“Š Using NSE Pre-Open Data for 3-Minute Strategy")
         
         try:
             # Get strategy params for min_gap
             strategy_params = self.config.get('strategies.three_minute.params', {})
             min_gap = strategy_params.get('min_gap_percent', 1.0)
-            max_stocks = self.config.max_stocks
+            max_stocks = int(strategy_params.get('stocks_per_side', 4))
             
             # Fetch and select gap candidates from NSE
             # This will wait until 9:10 AM if called before
-            logger.info(f"🔍 Fetching gap stocks (min gap: {min_gap}%, max: {max_stocks} per direction)")
+            logger.info(f"ðŸ” Fetching gap stocks (min gap: {min_gap}%, max: {max_stocks} per direction)")
             
             candidates = picker.fetch_and_select_candidates(
                 max_stocks=max_stocks,
@@ -1612,7 +1719,7 @@ class TradingBot:
             bearish = candidates.get('bearish', [])
             
             if not bullish and not bearish:
-                logger.warning("⚠️ No gap candidates found in pre-open data")
+                logger.warning("âš ï¸ No gap candidates found in pre-open data")
                 return False
             
             # Get Nifty 50 stock list for token mapping
@@ -1622,7 +1729,7 @@ class TradingBot:
             mapped_stocks = picker.map_to_broker_format(nifty50_stocks)
             
             if not mapped_stocks:
-                logger.warning("⚠️ No stocks could be mapped to broker format")
+                logger.warning("âš ï¸ No stocks could be mapped to broker format")
                 return False
             
             # Store old stocks for logging
@@ -1642,14 +1749,14 @@ class TradingBot:
             
             new_symbols = [s['symbol'] for s in self.selected_stocks]
             
-            logger.info(f"✅ Selected {len(self.selected_stocks)} gap stocks from NSE pre-open:")
+            logger.info(f"âœ… Selected {len(self.selected_stocks)} gap stocks from NSE pre-open:")
             for i, stock in enumerate(self.selected_stocks, 1):
                 direction = stock.get('trade_direction', 'LONG')
                 gap = stock.get('gap_percent', 0)
                 logger.info(f"   {i}. {stock['symbol']} ({direction}) Gap: {gap:+.2f}%")
             
             if old_symbols != new_symbols:
-                logger.info(f"📝 Stock change: {old_symbols} → {new_symbols}")
+                logger.info(f"ðŸ“ Stock change: {old_symbols} â†’ {new_symbols}")
             
             self._log_activity(
                 "REPICK",
@@ -1674,14 +1781,14 @@ class TradingBot:
             
             # If WebSocket is connected, update subscriptions
             if self.websocket and hasattr(self.websocket, 'is_connected') and self.websocket.is_connected:
-                logger.info("🔄 Updating WebSocket subscriptions for gap stocks...")
+                logger.info("ðŸ”„ Updating WebSocket subscriptions for gap stocks...")
                 self._restart_monitoring_with_new_stocks()
             
             logger.info("=" * 60)
             return True
             
         except Exception as e:
-            logger.error(f"❌ Error in pre-open gap picking: {e}")
+            logger.error(f"âŒ Error in pre-open gap picking: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -1691,14 +1798,18 @@ class TradingBot:
         Restart WebSocket monitoring with newly selected stocks.
         Called after stock repicking if WebSocket was already connected.
         """
+        if not self.broker_connected:
+            logger.warning("Broker is offline. Cannot restart WebSocket monitoring.")
+            return
+
         if not self.selected_stocks:
-            logger.warning("⚠️ No stocks to monitor")
+            logger.warning("âš ï¸ No stocks to monitor")
             return
         
         try:
             # Disconnect existing WebSocket
             if self.websocket:
-                logger.info("📡 Disconnecting current WebSocket...")
+                logger.info("ðŸ“¡ Disconnecting current WebSocket...")
                 self.websocket.disconnect()
             
             # Wait a moment for clean disconnect
@@ -1727,11 +1838,11 @@ class TradingBot:
             self.websocket.subscribe(tokens)
             self.websocket.connect()
             
-            logger.success(f"📡 WebSocket reconnected with {len(tokens)} new stocks")
+            logger.success(f"ðŸ“¡ WebSocket reconnected with {len(tokens)} new stocks")
             self._log_activity("WEBSOCKET", f"Reconnected with {len(tokens)} new stocks after strategy switch")
             
         except Exception as e:
-            logger.error(f"❌ Failed to restart WebSocket: {e}")
+            logger.error(f"âŒ Failed to restart WebSocket: {e}")
     
     def get_available_strategies(self) -> List[Dict]:
         """
@@ -1805,7 +1916,7 @@ class TradingBot:
                 if hasattr(self.strategy, 'reset_daily'):
                     self.strategy.reset_daily()
             
-            logger.info(f"📝 Updated params for {strategy_name}: {params}")
+            logger.info(f"ðŸ“ Updated params for {strategy_name}: {params}")
             self._log_activity("STRATEGY", f"Updated params for {strategy_name}", params)
             
             return True
@@ -1817,22 +1928,22 @@ class TradingBot:
     def pause(self) -> bool:
         """Pause trading (keep monitoring but don't trade)"""
         if self.status != "RUNNING":
-            logger.warning("⚠️ Bot is not running")
+            logger.warning("âš ï¸ Bot is not running")
             return False
         
         self.status = "PAUSED"
-        logger.info("⏸️ Trading bot paused")
+        logger.info("â¸ï¸ Trading bot paused")
         self._log_activity("SYSTEM", "Trading bot paused")
         return True
     
     def resume(self) -> bool:
         """Resume trading"""
         if self.status != "PAUSED":
-            logger.warning("⚠️ Bot is not paused")
+            logger.warning("âš ï¸ Bot is not paused")
             return False
         
         self.status = "RUNNING"
-        logger.info("▶️ Trading bot resumed")
+        logger.info("â–¶ï¸ Trading bot resumed")
         self._log_activity("SYSTEM", "Trading bot resumed")
         return True
     
@@ -1853,7 +1964,7 @@ class TradingBot:
         self._generate_daily_report()
         
         self.status = "STOPPED"
-        logger.info("⏹️ Trading bot stopped")
+        logger.info("â¹ï¸ Trading bot stopped")
         self._log_activity("SYSTEM", "Trading bot stopped")
         
         return True
@@ -1865,7 +1976,7 @@ class TradingBot:
         if self.angel_client:
             self.angel_client.logout()
         
-        logger.info("👋 Trading bot shutdown complete")
+        logger.info("ðŸ‘‹ Trading bot shutdown complete")
     
     # ==================== Reports & Status ====================
     
@@ -1884,8 +1995,8 @@ class TradingBot:
         with open(filepath, 'w') as f:
             json.dump(report, f, indent=2, default=str)
         
-        logger.info(f"📋 Daily report saved to {filepath}")
-        self._log_activity("REPORT", f"Daily report generated. P&L: ₹{self.daily_stats['pnl']:+.2f}")
+        logger.info(f"ðŸ“‹ Daily report saved to {filepath}")
+        self._log_activity("REPORT", f"Daily report generated. P&L: â‚¹{self.daily_stats['pnl']:+.2f}")
         
         return report
     
@@ -1983,11 +2094,11 @@ class TradingBot:
     def switch_trading_mode(self, mode: str) -> bool:
         """Switch between paper and live trading mode"""
         if mode not in ["paper", "live"]:
-            logger.error(f"❌ Invalid mode: {mode}")
+            logger.error(f"âŒ Invalid mode: {mode}")
             return False
         
         if self.status == "RUNNING":
-            logger.error("❌ Cannot switch mode while bot is running. Stop the bot first.")
+            logger.error("âŒ Cannot switch mode while bot is running. Stop the bot first.")
             return False
         
         self.config.trading_mode = mode
@@ -1997,7 +2108,7 @@ class TradingBot:
             balance = self.angel_client.get_available_balance()
             self.paper_trader = PaperTrader(initial_balance=balance)
         
-        logger.info(f"✅ Switched to {mode.upper()} trading mode")
+        logger.info(f"âœ… Switched to {mode.upper()} trading mode")
         self._log_activity("MODE", f"Switched to {mode.upper()} trading mode")
         
         return True
@@ -2028,13 +2139,15 @@ class TradingBot:
                 if balance > 0:
                     new_trading_capital = self._calculate_trading_capital(balance)
                     self.risk_manager.update_capital(new_trading_capital)
-                    logger.info(f"💰 Capital configuration updated. New trading capital: ₹{new_trading_capital:,.2f}")
-                    self._log_activity("CONFIG", f"Capital updated to ₹{new_trading_capital:,.2f}", updates)
+                    logger.info(f"ðŸ’° Capital configuration updated. New trading capital: â‚¹{new_trading_capital:,.2f}")
+                    self._log_activity("CONFIG", f"Capital updated to â‚¹{new_trading_capital:,.2f}", updates)
 
-            logger.info(f"⚙️ Configuration updated: {updates}")
+            logger.info(f"âš™ï¸ Configuration updated: {updates}")
             self._log_activity("CONFIG", f"Configuration updated", updates)
 
             return True
         except Exception as e:
-            logger.error(f"❌ Failed to update config: {e}")
+            logger.error(f"âŒ Failed to update config: {e}")
             return False
+
+

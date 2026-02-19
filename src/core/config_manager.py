@@ -1,42 +1,62 @@
-"""Configuration Manager - Load, save, and manage all settings"""
+"""Configuration Manager - Load, save, and manage all settings."""
 
 import json
-import os
 from pathlib import Path
-from typing import Any, Optional, List
+from typing import Any, List, Optional
+
 from loguru import logger
 
 from config.defaults import DEFAULT_CONFIG
 
 
 class ConfigManager:
-    """Manages all bot configurations with easy access methods"""
-    
-    def __init__(self, config_path: str = "config/settings. json"):
+    """Manages all bot configurations with easy access methods."""
+
+    def __init__(self, config_path: str = "config/settings.json"):
         self.config_path = Path(config_path)
         self.config = self._load_config()
-        
+
     def _load_config(self) -> dict:
-        """Load configuration from file or create default"""
-        if self.config_path.exists():
+        """Load configuration from file or create default."""
+        legacy_path = self.config_path.parent / "settings. json"
+
+        def _read(path: Path) -> Optional[dict]:
             try:
-                with open(self.config_path, 'r') as f:
-                    config = json.load(f)
-                    logger.info(f"✅ Configuration loaded from {self.config_path}")
-                    return self._merge_with_defaults(config)
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
             except json.JSONDecodeError as e:
-                logger.error(f"❌ Error reading config file: {e}")
-                return DEFAULT_CONFIG. copy()
-        else:
-            logger.warning(f"⚠️ Config file not found, creating default at {self.config_path}")
-            self.config_path.parent.mkdir(parents=True, exist_ok=True)
-            self._save_config(DEFAULT_CONFIG)
+                logger.error(f"Error reading config file {path}: {e}")
+                return None
+
+        if self.config_path.exists():
+            if legacy_path.exists():
+                logger.warning(
+                    f"Legacy config {legacy_path} exists. Using canonical {self.config_path}. "
+                    f"Delete/rename legacy file to avoid confusion."
+                )
+            config = _read(self.config_path)
+            if config is not None:
+                logger.info(f"Configuration loaded from {self.config_path}")
+                return self._merge_with_defaults(config)
             return DEFAULT_CONFIG.copy()
-    
+
+        # Canonical config missing - try migrating from legacy path.
+        if legacy_path.exists():
+            legacy_data = _read(legacy_path)
+            if legacy_data is not None:
+                logger.warning(f"Migrating legacy config {legacy_path} -> {self.config_path}")
+                self._save_config(legacy_data)
+                return self._merge_with_defaults(legacy_data)
+
+        logger.warning(f"Config file not found, creating default at {self.config_path}")
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        self._save_config(DEFAULT_CONFIG)
+        return DEFAULT_CONFIG.copy()
+
     def _merge_with_defaults(self, config: dict) -> dict:
-        """Merge loaded config with defaults to ensure all keys exist"""
+        """Merge loaded config with defaults to ensure all keys exist."""
         merged = DEFAULT_CONFIG.copy()
-        
+
         def deep_merge(base: dict, override: dict) -> dict:
             result = base.copy()
             for key, value in override.items():
@@ -45,31 +65,32 @@ class ConfigManager:
                 else:
                     result[key] = value
             return result
-        
+
         return deep_merge(merged, config)
-    
+
     def _save_config(self, config: dict) -> None:
-        """Save configuration to file"""
+        """Save configuration to file."""
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.config_path, 'w') as f:
+        with open(self.config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
-        logger.info(f"💾 Configuration saved to {self. config_path}")
-    
+        logger.info(f"Configuration saved to {self.config_path}")
+
     def save(self) -> None:
-        """Save current configuration"""
+        """Save current configuration."""
         self._save_config(self.config)
-    
+
     def reload(self) -> None:
-        """Reload configuration from file"""
+        """Reload configuration from file."""
         self.config = self._load_config()
-        logger.info("🔄 Configuration reloaded")
-    
-    def get(self, key: str, default:  Any = None) -> Any:
+        logger.info("Configuration reloaded")
+
+    def get(self, key: str, default: Any = None) -> Any:
         """
-        Get a configuration value using dot notation
+        Get a configuration value using dot notation.
+
         Example: config.get('strategy.stop_loss_percent')
         """
-        keys = key.split('.')
+        keys = key.split(".")
         value = self.config
         for k in keys:
             if isinstance(value, dict):
@@ -79,102 +100,99 @@ class ConfigManager:
             if value is None:
                 return default
         return value
-    
+
     def set(self, key: str, value: Any, save: bool = True) -> None:
         """
-        Set a configuration value using dot notation
-        Example:  config.set('strategy.stop_loss_percent', 0.75)
+        Set a configuration value using dot notation.
+
+        Example: config.set('strategy.stop_loss_percent', 0.75)
         """
-        keys = key.split('.')
+        keys = key.split(".")
         config = self.config
         for k in keys[:-1]:
             config = config.setdefault(k, {})
         config[keys[-1]] = value
-        
+
         if save:
-            self. save()
-        logger.info(f"⚙️ Config updated: {key} = {value}")
-    
+            self.save()
+        logger.info(f"Config updated: {key} = {value}")
+
     def get_all(self) -> dict:
-        """Get all configurations"""
-        return self.config. copy()
-    
+        """Get all configurations."""
+        return self.config.copy()
+
     def update_multiple(self, updates: dict) -> None:
-        """Update multiple configuration values at once"""
+        """Update multiple configuration values at once."""
         for key, value in updates.items():
             self.set(key, value, save=False)
         self.save()
-    
-    # ==================== Convenience Properties ====================
-    
+
     @property
     def is_paper_mode(self) -> bool:
-        """Check if running in paper trading mode"""
+        """Check if running in paper trading mode."""
         return self.config.get("trading_mode", "paper") == "paper"
-    
+
     @property
     def trading_mode(self) -> str:
-        """Get current trading mode"""
+        """Get current trading mode."""
         return self.config.get("trading_mode", "paper")
-    
+
     @trading_mode.setter
     def trading_mode(self, mode: str) -> None:
-        """Set trading mode (paper/live)"""
-        if mode not in ["paper", "live"]: 
+        """Set trading mode (paper/live)."""
+        if mode not in ["paper", "live"]:
             raise ValueError("Trading mode must be 'paper' or 'live'")
         self.set("trading_mode", mode)
-    
+
     @property
     def max_stocks(self) -> int:
-        """Get maximum stocks to trade"""
-        return self.get("stock_selection. max_stocks", 2)
-    
+        """Get maximum stocks to trade."""
+        return self.get("stock_selection.max_stocks", 2)
+
     @property
     def stop_loss_percent(self) -> float:
-        """Get stop loss percentage"""
+        """Get stop loss percentage."""
         return self.get("strategy.stop_loss_percent", 0.5)
-    
+
     @property
     def target_percent(self) -> float:
-        """Get target percentage"""
-        return self.get("strategy. target_percent", 1.0)
-    
+        """Get target percentage."""
+        return self.get("strategy.target_percent", 1.0)
+
     @property
     def max_daily_loss_percent(self) -> float:
-        """Get maximum daily loss percentage"""
-        return self. get("risk.max_daily_loss_percent", 2.0)
-    
+        """Get maximum daily loss percentage."""
+        return self.get("risk.max_daily_loss_percent", 2.0)
+
     @property
     def max_trades_per_day(self) -> int:
-        """Get maximum trades per day"""
-        return self. get("strategy.max_trades_per_day", 3)
-    
+        """Get maximum trades per day."""
+        return self.get("strategy.max_trades_per_day", 3)
+
     def get_nifty50_stocks(self) -> List[dict]:
-        """Load Nifty 50 stocks from config/nifty50.json"""
+        """Load Nifty 50 stocks from config/nifty50.json."""
         nifty50_path = Path("config/nifty50.json")
-        
+
         if not nifty50_path.exists():
-            logger.warning(f"⚠️ Nifty 50 config not found at {nifty50_path}")
+            logger.warning(f"Nifty 50 config not found at {nifty50_path}")
             return []
-        
+
         try:
-            with open(nifty50_path, 'r', encoding='utf-8') as f:
+            with open(nifty50_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                stocks = data.get('stocks', [])
-                logger.debug(f"📊 Loaded {len(stocks)} stocks from Nifty 50 config")
-                return stocks
+            stocks = data.get("stocks", [])
+            logger.debug(f"Loaded {len(stocks)} stocks from Nifty 50 config")
+            return stocks
         except Exception as e:
-            logger.error(f"❌ Error loading Nifty 50 config: {e}")
+            logger.error(f"Error loading Nifty 50 config: {e}")
             return []
 
 
-# ==================== Singleton Instance ====================
-
-_config_manager:  Optional[ConfigManager] = None
+_config_manager: Optional[ConfigManager] = None
 
 
 def get_config() -> ConfigManager:
-    """Get the global configuration manager instance"""
+    """Get the global configuration manager instance."""
     global _config_manager
     if _config_manager is None:
         _config_manager = ConfigManager()
@@ -182,7 +200,7 @@ def get_config() -> ConfigManager:
 
 
 def reload_config() -> ConfigManager:
-    """Reload and return the configuration manager"""
+    """Reload and return the configuration manager."""
     global _config_manager
     if _config_manager is not None:
         _config_manager.reload()

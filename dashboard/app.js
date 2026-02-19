@@ -57,14 +57,30 @@ async function fetchAPI(endpoint, options = {}) {
             headers: headers
         });
 
-        // Handle 401 Unauthorized - only redirect if we had a token (auth was expected)
-        if (response.status === 401 && token) {
+        // Handle 401 Unauthorized
+        if (response.status === 401) {
             localStorage.removeItem('auth_token');
             window.location.href = '/login';
             return { success: false, error: 'Session expired' };
         }
-
-        return await response.json();
+        
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            return {
+                success: response.ok,
+                error: response.ok ? null : `HTTP ${response.status}`
+            };
+        }
+        
+        const text = await response.text();
+        if (!text) {
+            return {
+                success: response.ok,
+                error: response.ok ? null : `HTTP ${response.status} (empty response)`
+            };
+        }
+        
+        return JSON.parse(text);
     } catch (error) {
         console.error(`API Error (${endpoint}):`, error);
         return { success: false, error: error.message };
@@ -1599,19 +1615,33 @@ async function refreshNiftyGapStatus() {
             }
         }
         
-        // Update chart
-        updateNiftyGapChart(data);
+        // Update chart (now async)
+        await updateNiftyGapChart(data);
         
     } catch (error) {
         console.error('Error refreshing Nifty gap status:', error);
     }
 }
 
-function updateNiftyGapChart(data) {
+async function fetchNiftyChartData(interval = 'FIVE_MINUTE') {
+    // Fetch Nifty 50 historical chart data from API
+    try {
+        const response = await fetchAPI(`/nifty50/chart?interval=${interval}&days=1`);
+        return response;
+    } catch (error) {
+        console.error('Error fetching Nifty chart data:', error);
+        return null;
+    }
+}
+
+async function updateNiftyGapChart(gapStatusData) {
     const chartContainer = document.getElementById('nifty-gap-chart');
     const loadingEl = document.getElementById('nifty-chart-loading');
     
-    if (!chartContainer || !data.prev_close || !data.open_price) return;
+    if (!chartContainer) return;
+    
+    // Fetch actual historical chart data
+    const chartData = await fetchNiftyChartData('FIVE_MINUTE');
     
     // Hide loading
     if (loadingEl) loadingEl.style.display = 'none';
@@ -1622,7 +1652,7 @@ function updateNiftyGapChart(data) {
         niftyGapChart = null;
     }
     
-    // Create new chart
+    // Create new chart with better configuration
     niftyGapChart = LightweightCharts.createChart(chartContainer, {
         layout: {
             background: { color: 'transparent' },
@@ -1634,64 +1664,129 @@ function updateNiftyGapChart(data) {
         },
         rightPriceScale: {
             borderColor: '#38383a',
+            scaleMargins: {
+                top: 0.1,
+                bottom: 0.1,
+            },
         },
         timeScale: {
-            visible: false,
+            visible: true,
+            borderColor: '#38383a',
+            timeVisible: true,
+            secondsVisible: false,
         },
-        handleScroll: false,
-        handleScale: false,
+        handleScroll: true,
+        handleScale: true,
     });
     
-    // Add horizontal line series for reference prices
-    const prevCloseLine = niftyGapChart.addLineSeries({
-        color: '#22c55e',
-        lineWidth: 2,
-        lastValueVisible: true,
-        title: 'Prev Close',
+    // Add candlestick series for actual price data
+    const candleSeries = niftyGapChart.addCandlestickSeries({
+        upColor: '#22c55e',
+        downColor: '#ef4444',
+        borderUpColor: '#22c55e',
+        borderDownColor: '#ef4444',
+        wickUpColor: '#22c55e',
+        wickDownColor: '#ef4444',
     });
     
-    const openLine = niftyGapChart.addLineSeries({
-        color: '#3b82f6',
-        lineWidth: 2,
-        lastValueVisible: true,
-        title: 'Open',
-    });
+    // Set candle data if available
+    if (chartData && chartData.success && chartData.data && chartData.data.candles && chartData.data.candles.length > 0) {
+        candleSeries.setData(chartData.data.candles);
+    }
     
-    const currentLine = niftyGapChart.addLineSeries({
-        color: '#f59e0b',
-        lineWidth: 2,
-        lineStyle: LightweightCharts.LineStyle.Dashed,
-        lastValueVisible: true,
-        title: 'Current',
-    });
-    
-    // Set data - create a simple visualization
-    const baseTime = Math.floor(Date.now() / 1000);
-    const timeRange = 100; // 100 data points
-    
-    // Previous close line (horizontal)
-    const prevCloseData = [];
-    const openData = [];
-    const currentData = [];
-    
-    for (let i = 0; i < timeRange; i++) {
-        prevCloseData.push({ time: baseTime - timeRange + i, value: data.prev_close });
-        openData.push({ time: baseTime - timeRange + i, value: data.open_price });
+    // Add reference lines for gap analysis
+    if (gapStatusData && gapStatusData.prev_close) {
+        const prevCloseLine = niftyGapChart.addLineSeries({
+            color: '#22c55e',
+            lineWidth: 2,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            lastValueVisible: true,
+            title: 'Prev Close',
+        });
         
-        // Current price line (only show from middle onwards)
-        if (i > timeRange / 2 && data.current_price) {
-            currentData.push({ time: baseTime - timeRange + i, value: data.current_price });
+        // Create horizontal line for previous close
+        const prevCloseData = [];
+        const candles = chartData?.data?.candles || [];
+        if (candles.length > 0) {
+            const firstTime = candles[0].time;
+            const lastTime = candles[candles.length - 1].time;
+            prevCloseData.push(
+                { time: firstTime, value: gapStatusData.prev_close },
+                { time: lastTime, value: gapStatusData.prev_close }
+            );
+        } else {
+            // Fallback: create a simple line if no candle data
+            const baseTime = Math.floor(Date.now() / 1000);
+            prevCloseData.push(
+                { time: baseTime - 3600, value: gapStatusData.prev_close },
+                { time: baseTime, value: gapStatusData.prev_close }
+            );
         }
+        prevCloseLine.setData(prevCloseData);
     }
     
-    prevCloseLine.setData(prevCloseData);
-    openLine.setData(openData);
-    if (currentData.length > 0) {
-        currentLine.setData(currentData);
+    if (gapStatusData && gapStatusData.open_price) {
+        const openLine = niftyGapChart.addLineSeries({
+            color: '#3b82f6',
+            lineWidth: 2,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            lastValueVisible: true,
+            title: 'Open',
+        });
+        
+        // Create horizontal line for open price
+        const openData = [];
+        const candles = chartData?.data?.candles || [];
+        if (candles.length > 0) {
+            const firstTime = candles[0].time;
+            const lastTime = candles[candles.length - 1].time;
+            openData.push(
+                { time: firstTime, value: gapStatusData.open_price },
+                { time: lastTime, value: gapStatusData.open_price }
+            );
+        } else {
+            const baseTime = Math.floor(Date.now() / 1000);
+            openData.push(
+                { time: baseTime - 3600, value: gapStatusData.open_price },
+                { time: baseTime, value: gapStatusData.open_price }
+            );
+        }
+        openLine.setData(openData);
     }
     
-    // Fit content
+    // Fit content to show all data
     niftyGapChart.timeScale().fitContent();
+}
+
+let currentNiftyInterval = 'FIVE_MINUTE';
+
+async function changeNiftyInterval(interval) {
+    // Change Nifty chart interval and reload data
+    currentNiftyInterval = interval;
+    
+    // Update button styles
+    document.querySelectorAll('.nifty-interval-btn').forEach(btn => {
+        btn.classList.remove('bg-accent', 'text-white');
+        btn.classList.add('text-text-secondary');
+    });
+    const activeBtn = document.querySelector(`.nifty-interval-btn[data-interval="${interval}"]`);
+    if (activeBtn) {
+        activeBtn.classList.add('bg-accent', 'text-white');
+        activeBtn.classList.remove('text-text-secondary');
+    }
+    
+    // Show loading
+    const loadingEl = document.getElementById('nifty-chart-loading');
+    if (loadingEl) loadingEl.style.display = 'flex';
+    
+    // Fetch new chart data
+    const chartData = await fetchNiftyChartData(interval);
+    const gapStatusData = await getNifty50GapStatus();
+    
+    // Update chart with new data
+    if (gapStatusData && gapStatusData.success && gapStatusData.data) {
+        await updateNiftyGapChart(gapStatusData.data);
+    }
 }
 
 async function refreshWatchlistData() {
@@ -1981,6 +2076,17 @@ window.addEventListener('resize', () => {
             });
         }
     });
+    
+    // Resize Nifty chart if it exists
+    if (niftyGapChart) {
+        const chartContainer = document.getElementById('nifty-gap-chart');
+        if (chartContainer) {
+            niftyGapChart.applyOptions({
+                width: chartContainer.clientWidth,
+                height: chartContainer.clientHeight
+            });
+        }
+    }
 });
 
 function init() {
