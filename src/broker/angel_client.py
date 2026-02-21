@@ -28,6 +28,10 @@ class AngelOneClient:
         self.password = os.getenv("ANGEL_PASSWORD")
         self.totp_secret = os.getenv("ANGEL_TOTP_SECRET")
         
+        # Cache for historical data (key: (symbol, token, interval), value: (data, timestamp))
+        self._hist_cache: Dict[tuple, tuple] = {}
+        self._hist_cache_ttl = 60  # Cache TTL in seconds
+        
         # Load API keys for different purposes
         self.trading_api_key = os.getenv("ANGEL_TRADING_API_KEY") or os.getenv("ANGEL_API_KEY")
         self.historical_api_key = os.getenv("ANGEL_HISTORICAL_API_KEY") or self.trading_api_key
@@ -186,15 +190,50 @@ class AngelOneClient:
         """Get full quote data for a symbol"""
         if not self.is_authenticated:
             return None
-            
+        
+        if token == "99926000" and symbol.upper() == "NIFTY":
+            return self._get_nifty_index_quote()
+        
         try:
-            data = self.smart_api.getQuote(exchange, symbol, token)
-            if data.get("status"):
-                return data["data"]
+            ltp_result = self.smart_api.ltpData(exchange, symbol, token)
+            if ltp_result and ltp_result.get("status"):
+                data = ltp_result.get("data", {})
+                return {
+                    "symbol": data.get("symbol"),
+                    "token": data.get("token"),
+                    "ltp": data.get("ltp"),
+                    "open": data.get("open"),
+                    "high": data.get("high"),
+                    "low": data.get("low"),
+                    "close": data.get("close"),
+                    "previousClose": data.get("previousClose"),
+                    "volume": data.get("volume"),
+                }
             return None
         except Exception as e:
             logger.error(f"Error fetching quote for {symbol}: {e}")
             return None
+    
+    def _get_nifty_index_quote(self) -> Optional[Dict]:
+        """Get NIFTY index quote from NSE pre-open data"""
+        try:
+            from src.analysis.nse_preopen_fetcher import get_nse_preopen_fetcher
+            fetcher = get_nse_preopen_fetcher(segment='nifty')
+            data = fetcher.fetch_final_preopen_data(wait_if_not_ready=False)
+            if data and len(data) > 0:
+                nifty_info = data[0]
+                return {
+                    "symbol": "NIFTY",
+                    "token": "99926000",
+                    "ltp": nifty_info.get('iep'),
+                    "open": nifty_info.get('open'),
+                    "high": nifty_info.get('high'),
+                    "low": nifty_info.get('low'),
+                    "previousClose": nifty_info.get('previousClose') or nifty_info.get('pp'),
+                }
+        except Exception as e:
+            logger.error(f"Error fetching NIFTY from NSE: {e}")
+        return None
     
     def get_historical_data(
         self,
@@ -207,14 +246,28 @@ class AngelOneClient:
         """
         Get historical candle data using Historical Data API.
         
-        Intervals: ONE_MINUTE, FIVE_MINUTE, FIFTEEN_MINUTE, 
-                   THIRTY_MINUTE, ONE_HOUR, ONE_DAY
+        Intervals: ONE_MINUTE, THREE_MINUTE, FIVE_MINUTE, TEN_MINUTE,
+                   FIFTEEN_MINUTE, THIRTY_MINUTE, ONE_HOUR, ONE_DAY
+        
+        Date format expected by API: "YYYY-MM-DD HH:MM"
         """
         if not self.is_authenticated:
             return None
-            
+        
+        # [FIX] Validate symboltoken before making API call — empty token causes AB1004
+        if not token or str(token).strip() == "":
+            logger.warning(f"⚠️ {symbol}: Cannot fetch historical data — symboltoken is empty")
+            return None
+        
         import time
         from src.utils.timezone import now_ist_time
+        
+        # Check cache first
+        cache_key = (symbol, token, interval, days)
+        if cache_key in self._hist_cache:
+            cached_data, cached_time = self._hist_cache[cache_key]
+            if time.time() - cached_time < self._hist_cache_ttl:
+                return cached_data
         
         # [FIX] Reduce retries during market hours (9:00-15:30) when API is overloaded
         current_time = now_ist_time()
@@ -226,15 +279,37 @@ class AngelOneClient:
         max_retries = 1 if is_market_hours else 2
         retry_delay = 0.5 if is_market_hours else 1  # Faster fail during market hours
         
+        # Validate interval against SmartAPI supported values
+        valid_intervals = [
+            "ONE_MINUTE", "THREE_MINUTE", "FIVE_MINUTE", "TEN_MINUTE",
+            "FIFTEEN_MINUTE", "THIRTY_MINUTE", "ONE_HOUR", "ONE_DAY"
+        ]
+        if interval not in valid_intervals:
+            logger.warning(f"⚠️ {symbol}: Invalid interval '{interval}'. Using FIFTEEN_MINUTE.")
+            interval = "FIFTEEN_MINUTE"
+        
         for attempt in range(max_retries):
             try:
                 from src.utils.timezone import now_ist
                 to_date = now_ist()
                 from_date = to_date - timedelta(days=days)
                 
+                # [FIX] Clamp times to market hours for intraday intervals
+                # SmartAPI returns no data for timestamps outside 9:00-15:30
+                if interval != "ONE_DAY":
+                    # Clamp to_date to max 15:30 of today
+                    market_close_today = to_date.replace(hour=15, minute=30, second=0, microsecond=0)
+                    if to_date > market_close_today:
+                        to_date = market_close_today
+                    
+                    # Clamp from_date to 9:00 of that day
+                    from_date_market_open = from_date.replace(hour=9, minute=0, second=0, microsecond=0)
+                    if from_date < from_date_market_open:
+                        from_date = from_date_market_open
+                
                 params = {
                     "exchange": exchange,
-                    "symboltoken": token,
+                    "symboltoken": str(token),
                     "interval": interval,
                     "fromdate": from_date.strftime("%Y-%m-%d %H:%M"),
                     "todate": to_date.strftime("%Y-%m-%d %H:%M")
@@ -246,7 +321,7 @@ class AngelOneClient:
                 if data.get("status"):
                     if data.get("data"):
                         candles = data["data"]
-                        return [
+                        result = [
                             {
                                 "timestamp": candle[0],
                                 "open": float(candle[1]),
@@ -257,6 +332,8 @@ class AngelOneClient:
                             }
                             for candle in candles
                         ]
+                        self._hist_cache[cache_key] = (result, time.time())
+                        return result
                     else:
                         logger.debug(f"{symbol}: No data in successful response")
                         return None
@@ -265,15 +342,15 @@ class AngelOneClient:
                 message = data.get("message", "").lower()
                 error_code = data.get("errorcode", "")
                 
-                # [FIX] Rate limit error - fail fast, don't retry during market hours
+                # [FIX] Rate limit or bad param error — fail fast, don't retry during market hours
                 if "access denied" in message or "exceeding access rate" in message or error_code == "AB1004":
                     if attempt < max_retries - 1:
                         logger.debug(f"⏳ Rate limit hit for {symbol} ({error_code}). Quick retry {attempt+1}/{max_retries}")
                         time.sleep(retry_delay)
                         continue
                     else:
-                        # Final attempt failed - log once and return
-                        logger.debug(f"❌ {symbol}: Rate limit - skipping")
+                        # Final attempt failed — log once and return
+                        logger.debug(f"❌ {symbol}: API error ({error_code}) — skipping")
                         return None
                 
                 logger.error(f"Error fetching historical data for {symbol}: {data.get('message')} ({error_code})")
@@ -288,6 +365,89 @@ class AngelOneClient:
         
         return None
     
+    def get_historical_data_for_date(
+        self,
+        symbol: str,
+        token: str,
+        date_str: str,
+        interval: str = "THREE_MINUTE",
+        exchange: str = "NSE",
+        include_prev_day: bool = True,
+    ) -> Optional[List[Dict]]:
+        """
+        Get historical candle data for a specific date.
+        Used by the backtester to fetch data for past dates.
+        
+        Args:
+            symbol: Stock symbol (e.g., "SBIN-EQ")
+            token: Angel One symbol token
+            date_str: Date string in YYYY-MM-DD format
+            interval: Candle interval (default THREE_MINUTE for strategy)
+            exchange: Exchange (default NSE)
+            include_prev_day: If True, fetches prev day data too (for gap calculation)
+        
+        Returns:
+            List of candle dicts or None
+        """
+        if not self.is_authenticated:
+            return None
+        
+        if not token or str(token).strip() == "":
+            return None
+        
+        import time as time_mod
+        from datetime import datetime, timedelta
+        
+        try:
+            target_date = datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            logger.warning(f"⚠️ Invalid date format: {date_str}")
+            return None
+        
+        # Set date range: include previous trading day for gap calculation
+        if include_prev_day:
+            from_date = (target_date - timedelta(days=3))  # 3 days back to handle weekends
+            from_str = from_date.strftime("%Y-%m-%d") + " 09:00"
+        else:
+            from_str = date_str + " 09:00"
+        
+        to_str = date_str + " 15:30"
+        
+        try:
+            params = {
+                "exchange": exchange,
+                "symboltoken": str(token),
+                "interval": interval,
+                "fromdate": from_str,
+                "todate": to_str,
+            }
+            
+            data = self.historical_api.getCandleData(params)
+            
+            if data and data.get("status") and data.get("data"):
+                candles = data["data"]
+                result = [
+                    {
+                        "timestamp": candle[0],
+                        "open": float(candle[1]),
+                        "high": float(candle[2]),
+                        "low": float(candle[3]),
+                        "close": float(candle[4]),
+                        "volume": int(candle[5]),
+                    }
+                    for candle in candles
+                ]
+                return result
+            
+            error_code = data.get("errorcode", "") if data else ""
+            if error_code:
+                logger.debug(f"📊 Backtest data fetch for {symbol}/{date_str}: {error_code}")
+            return None
+            
+        except Exception as e:
+            logger.debug(f"📊 Backtest fetch error for {symbol}/{date_str}: {e}")
+            return None
+
     def get_previous_day_ohlc(self, symbol: str, token: str,
                               exchange: str = "NSE") -> Optional[Dict]:
         """

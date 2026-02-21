@@ -63,7 +63,7 @@ async function fetchAPI(endpoint, options = {}) {
             window.location.href = '/login';
             return { success: false, error: 'Session expired' };
         }
-        
+
         const contentType = response.headers.get('content-type') || '';
         if (!contentType.includes('application/json')) {
             return {
@@ -71,7 +71,7 @@ async function fetchAPI(endpoint, options = {}) {
                 error: response.ok ? null : `HTTP ${response.status}`
             };
         }
-        
+
         const text = await response.text();
         if (!text) {
             return {
@@ -79,7 +79,7 @@ async function fetchAPI(endpoint, options = {}) {
                 error: response.ok ? null : `HTTP ${response.status} (empty response)`
             };
         }
-        
+
         return JSON.parse(text);
     } catch (error) {
         console.error(`API Error (${endpoint}):`, error);
@@ -146,28 +146,28 @@ const stockPriceHistory = {};
 
 async function initializeStockCharts(stocks) {
     if (!stocks || stocks.length === 0) return;
-    
+
     const container = document.getElementById('stock-charts-container');
     if (!container) return;
-    
+
     // Clear container if no stocks
     if (stocks.length === 0) {
         container.innerHTML = '<div class="text-center py-8 text-text-muted">Select stocks to view charts</div>';
         return;
     }
-    
+
     // Initialize charts for each stock
     for (const stock of stocks) {
         const symbol = stock.symbol;
-        
+
         // Skip if chart already exists
         if (stockCharts[symbol]) continue;
-        
+
         // Create chart container
         const chartWrapper = document.createElement('div');
         chartWrapper.className = 'stock-chart-wrapper';
         chartWrapper.id = `chart-wrapper-${symbol}`;
-        
+
         const cleanSymbol = symbol.replace('-EQ', '');
         chartWrapper.innerHTML = `
             <div class="stock-chart-header">
@@ -180,9 +180,9 @@ async function initializeStockCharts(stocks) {
             </div>
             <div id="chart-${symbol}" class="stock-chart-container"></div>
         `;
-        
+
         container.appendChild(chartWrapper);
-        
+
         // Initialize lightweight chart
         const chart = LightweightCharts.createChart(
             document.getElementById(`chart-${symbol}`),
@@ -221,7 +221,7 @@ async function initializeStockCharts(stocks) {
                 },
             }
         );
-        
+
         // Add candlestick series for price
         const candleSeries = chart.addCandlestickSeries({
             upColor: '#22c55e',
@@ -231,7 +231,7 @@ async function initializeStockCharts(stocks) {
             wickUpColor: '#22c55e',
             wickDownColor: '#ef4444',
         });
-        
+
         // Add horizontal lines for Entry, Target, SL
         const entryLine = chart.addLineSeries({
             color: '#22c55e',
@@ -240,7 +240,7 @@ async function initializeStockCharts(stocks) {
             lastValueVisible: true,
             title: 'Entry',
         });
-        
+
         const targetLine = chart.addLineSeries({
             color: '#3b82f6',
             lineWidth: 1,
@@ -248,7 +248,7 @@ async function initializeStockCharts(stocks) {
             lastValueVisible: true,
             title: 'Target',
         });
-        
+
         const slLine = chart.addLineSeries({
             color: '#ef4444',
             lineWidth: 1,
@@ -256,7 +256,7 @@ async function initializeStockCharts(stocks) {
             lastValueVisible: true,
             title: 'SL',
         });
-        
+
         // Store chart instance
         stockCharts[symbol] = {
             chart,
@@ -269,11 +269,11 @@ async function initializeStockCharts(stocks) {
             targetPrice: stock.target_price || stock.target,
             stopLoss: stock.stop_loss,
         };
-        
+
         // Fetch historical data
         await fetchAndDisplayHistoricalData(symbol);
     }
-    
+
     // Remove charts for stocks that are no longer selected
     Object.keys(stockCharts).forEach(symbol => {
         if (!stocks.find(s => s.symbol === symbol)) {
@@ -286,46 +286,46 @@ async function fetchAndDisplayHistoricalData(symbol) {
     try {
         const response = await getStockHistory(symbol);
         if (!response.success || !response.data) return;
-        
+
         const data = response.data;
         const chartData = stockCharts[symbol];
         if (!chartData) return;
-        
+
         // Set candles
         if (data.candles && data.candles.length > 0) {
             chartData.candleSeries.setData(data.candles);
             stockPriceHistory[symbol] = data.candles;
         }
-        
+
         // Set horizontal lines
-        const timeRange = data.candles && data.candles.length > 0 
+        const timeRange = data.candles && data.candles.length > 0
             ? { start: data.candles[0].time, end: data.candles[data.candles.length - 1].time }
             : { start: Math.floor(Date.now() / 1000) - 3600, end: Math.floor(Date.now() / 1000) };
-        
+
         if (data.entry_price) {
             chartData.entryLine.setData([
                 { time: timeRange.start, value: data.entry_price },
                 { time: timeRange.end + 3600, value: data.entry_price }
             ]);
         }
-        
+
         if (data.target_price) {
             chartData.targetLine.setData([
                 { time: timeRange.start, value: data.target_price },
                 { time: timeRange.end + 3600, value: data.target_price }
             ]);
         }
-        
+
         if (data.stop_loss) {
             chartData.slLine.setData([
                 { time: timeRange.start, value: data.stop_loss },
                 { time: timeRange.end + 3600, value: data.stop_loss }
             ]);
         }
-        
+
         // Fit content
         chartData.chart.timeScale().fitContent();
-        
+
     } catch (error) {
         console.error(`Error fetching historical data for ${symbol}:`, error);
     }
@@ -334,16 +334,16 @@ async function fetchAndDisplayHistoricalData(symbol) {
 function updateStockChartRealtime(symbol, priceData) {
     const chartData = stockCharts[symbol];
     if (!chartData) return;
-    
+
     // Create a candle from the price data
     const time = Math.floor(Date.now() / 1000);
     const price = priceData.ltp || priceData.close || priceData;
-    
+
     // If we have historical data, update the last candle or add new one
     if (stockPriceHistory[symbol] && stockPriceHistory[symbol].length > 0) {
         const lastCandle = stockPriceHistory[symbol][stockPriceHistory[symbol].length - 1];
         const lastCandleTime = lastCandle.time;
-        
+
         // If same minute, update last candle
         if (Math.floor(time / 60) === Math.floor(lastCandleTime / 60)) {
             lastCandle.close = price;
@@ -378,15 +378,15 @@ function updateStockChartRealtime(symbol, priceData) {
 function removeStockChart(symbol) {
     const chartData = stockCharts[symbol];
     if (!chartData) return;
-    
+
     // Remove chart
     chartData.chart.remove();
-    
+
     // Remove wrapper element
     if (chartData.wrapper && chartData.wrapper.parentNode) {
         chartData.wrapper.parentNode.removeChild(chartData.wrapper);
     }
-    
+
     // Clean up
     delete stockCharts[symbol];
     delete stockPriceHistory[symbol];
@@ -407,10 +407,10 @@ function updateChartsFromRealtimeData(stocks) {
     if (now - lastChartUpdateTime < CHART_UPDATE_INTERVAL) {
         return; // Skip update, not enough time passed
     }
-    
+
     lastChartUpdateTime = now;
     console.log('📈 Updating charts (1-minute interval)...');
-    
+
     // Update charts with real-time price data from the main dashboard refresh
     // This avoids making additional API calls for historical data
     stocks.forEach(stock => {
@@ -757,10 +757,10 @@ function updateStocksTable(stocks) {
             </tr>
         `;
     }).join('');
-    
+
     // Initialize or update charts for selected stocks
     initializeStockCharts(stocks);
-    
+
     // Update real-time data for existing charts (from main data refresh, no extra API calls)
     updateChartsFromRealtimeData(stocks);
 }
@@ -1097,6 +1097,11 @@ function switchTab(tabId) {
     } else {
         // Stop Nifty50 polling when switching away from the tab
         stopNifty50Polling();
+    }
+
+    if (tabId === 'backtest') {
+        initBacktestCalendar();
+        loadBacktestReports();
     }
 }
 
@@ -1530,24 +1535,24 @@ let niftyGapChart = null;
 async function refreshNiftyGapStatus() {
     try {
         const result = await getNifty50GapStatus();
-        
+
         if (!result.success || !result.data) {
             console.log('Nifty gap status not available yet');
             return;
         }
-        
+
         const data = result.data;
         const gapStatus = data.gap_status;
         const gapPercent = data.gap_percent;
         const gapPoints = data.gap_points;
-        
+
         // Update gap badge
         const badge = document.getElementById('nifty-gap-badge');
         if (badge) {
             let badgeClass = 'bg-bg-elevated text-text-secondary';
             let badgeText = 'FLAT';
             let badgeIcon = '➡️';
-            
+
             if (gapStatus === 'GAP_UP') {
                 badgeClass = 'bg-success/20 text-success border border-success/30';
                 badgeText = `GAP UP +${gapPercent}%`;
@@ -1561,25 +1566,25 @@ async function refreshNiftyGapStatus() {
                 badgeText = 'FLAT OPEN';
                 badgeIcon = '⚪';
             }
-            
+
             badge.className = `px-4 py-2 rounded-lg font-bold text-lg ${badgeClass}`;
             badge.innerHTML = `${badgeIcon} ${badgeText}`;
         }
-        
+
         // Update price values
         const prevCloseEl = document.getElementById('nifty-prev-close');
         if (prevCloseEl) prevCloseEl.textContent = data.prev_close ? `₹${data.prev_close.toLocaleString('en-IN')}` : '-';
-        
+
         const openPriceEl = document.getElementById('nifty-open-price');
         if (openPriceEl) openPriceEl.textContent = data.open_price ? `₹${data.open_price.toLocaleString('en-IN')}` : '-';
-        
+
         const gapPercentEl = document.getElementById('nifty-gap-percent');
         if (gapPercentEl) {
             const sign = gapPercent >= 0 ? '+' : '';
             const colorClass = gapPercent > 0 ? 'text-success' : gapPercent < 0 ? 'text-danger' : 'text-text-secondary';
             gapPercentEl.innerHTML = `<span class="${colorClass}">${sign}${gapPercent}%</span>`;
         }
-        
+
         const currentPriceEl = document.getElementById('nifty-current-price');
         if (currentPriceEl) {
             const currentChange = data.current_change_percent;
@@ -1587,16 +1592,16 @@ async function refreshNiftyGapStatus() {
             const colorClass = currentChange > 0 ? 'text-success' : currentChange < 0 ? 'text-danger' : 'text-text-secondary';
             currentPriceEl.innerHTML = `<span class="${colorClass}">₹${data.current_price?.toLocaleString('en-IN') || '-'} (${sign}${currentChange}%)</span>`;
         }
-        
+
         // Update trading direction indicator
         const directionSection = document.getElementById('nifty-trading-direction');
         const directionIcon = document.getElementById('nifty-direction-icon');
         const directionTitle = document.getElementById('nifty-direction-title');
         const directionDesc = document.getElementById('nifty-direction-desc');
-        
+
         if (directionSection && directionTitle && directionDesc) {
             directionSection.classList.remove('hidden');
-            
+
             if (gapStatus === 'GAP_UP') {
                 directionIcon.textContent = '🔴';
                 directionTitle.textContent = 'Strategy: SHORT (Mean Reversion)';
@@ -1614,16 +1619,16 @@ async function refreshNiftyGapStatus() {
                 directionSection.className = 'mt-4 p-3 rounded-lg bg-warning/10 border border-warning/20';
             }
         }
-        
+
         // Update chart (now async)
         await updateNiftyGapChart(data);
-        
+
     } catch (error) {
         console.error('Error refreshing Nifty gap status:', error);
     }
 }
 
-async function fetchNiftyChartData(interval = 'FIVE_MINUTE') {
+async function fetchNiftyChartData(interval = 'THREE_MINUTE') {
     // Fetch Nifty 50 historical chart data from API
     try {
         const response = await fetchAPI(`/nifty50/chart?interval=${interval}&days=1`);
@@ -1637,21 +1642,21 @@ async function fetchNiftyChartData(interval = 'FIVE_MINUTE') {
 async function updateNiftyGapChart(gapStatusData) {
     const chartContainer = document.getElementById('nifty-gap-chart');
     const loadingEl = document.getElementById('nifty-chart-loading');
-    
+
     if (!chartContainer) return;
-    
+
     // Fetch actual historical chart data
-    const chartData = await fetchNiftyChartData('FIVE_MINUTE');
-    
+    const chartData = await fetchNiftyChartData('THREE_MINUTE');
+
     // Hide loading
     if (loadingEl) loadingEl.style.display = 'none';
-    
+
     // Destroy existing chart if any
     if (niftyGapChart) {
         niftyGapChart.remove();
         niftyGapChart = null;
     }
-    
+
     // Create new chart with better configuration
     niftyGapChart = LightweightCharts.createChart(chartContainer, {
         layout: {
@@ -1678,7 +1683,7 @@ async function updateNiftyGapChart(gapStatusData) {
         handleScroll: true,
         handleScale: true,
     });
-    
+
     // Add candlestick series for actual price data
     const candleSeries = niftyGapChart.addCandlestickSeries({
         upColor: '#22c55e',
@@ -1688,12 +1693,12 @@ async function updateNiftyGapChart(gapStatusData) {
         wickUpColor: '#22c55e',
         wickDownColor: '#ef4444',
     });
-    
+
     // Set candle data if available
     if (chartData && chartData.success && chartData.data && chartData.data.candles && chartData.data.candles.length > 0) {
         candleSeries.setData(chartData.data.candles);
     }
-    
+
     // Add reference lines for gap analysis
     if (gapStatusData && gapStatusData.prev_close) {
         const prevCloseLine = niftyGapChart.addLineSeries({
@@ -1703,7 +1708,7 @@ async function updateNiftyGapChart(gapStatusData) {
             lastValueVisible: true,
             title: 'Prev Close',
         });
-        
+
         // Create horizontal line for previous close
         const prevCloseData = [];
         const candles = chartData?.data?.candles || [];
@@ -1724,7 +1729,7 @@ async function updateNiftyGapChart(gapStatusData) {
         }
         prevCloseLine.setData(prevCloseData);
     }
-    
+
     if (gapStatusData && gapStatusData.open_price) {
         const openLine = niftyGapChart.addLineSeries({
             color: '#3b82f6',
@@ -1733,7 +1738,7 @@ async function updateNiftyGapChart(gapStatusData) {
             lastValueVisible: true,
             title: 'Open',
         });
-        
+
         // Create horizontal line for open price
         const openData = [];
         const candles = chartData?.data?.candles || [];
@@ -1753,17 +1758,17 @@ async function updateNiftyGapChart(gapStatusData) {
         }
         openLine.setData(openData);
     }
-    
+
     // Fit content to show all data
     niftyGapChart.timeScale().fitContent();
 }
 
-let currentNiftyInterval = 'FIVE_MINUTE';
+let currentNiftyInterval = 'THREE_MINUTE';
 
 async function changeNiftyInterval(interval) {
     // Change Nifty chart interval and reload data
     currentNiftyInterval = interval;
-    
+
     // Update button styles
     document.querySelectorAll('.nifty-interval-btn').forEach(btn => {
         btn.classList.remove('bg-accent', 'text-white');
@@ -1774,19 +1779,514 @@ async function changeNiftyInterval(interval) {
         activeBtn.classList.add('bg-accent', 'text-white');
         activeBtn.classList.remove('text-text-secondary');
     }
-    
+
     // Show loading
     const loadingEl = document.getElementById('nifty-chart-loading');
     if (loadingEl) loadingEl.style.display = 'flex';
-    
+
     // Fetch new chart data
     const chartData = await fetchNiftyChartData(interval);
     const gapStatusData = await getNifty50GapStatus();
-    
+
     // Update chart with new data
     if (gapStatusData && gapStatusData.success && gapStatusData.data) {
         await updateNiftyGapChart(gapStatusData.data);
     }
+}
+
+// ==================== Backtest ====================
+
+let _backtestRunning = false;
+
+async function runBacktest() {
+    if (_backtestRunning) return;
+
+    const dateInput = document.getElementById('backtest-date');
+    const date = dateInput ? dateInput.value : '';
+
+    if (!date) {
+        alert('Please select a date first.');
+        return;
+    }
+
+    _backtestRunning = true;
+    const btn = document.getElementById('btn-run-backtest');
+    const progressDiv = document.getElementById('backtest-progress');
+    const progressBar = document.getElementById('backtest-progress-bar');
+    const progressText = document.getElementById('backtest-progress-text');
+    const resultsDiv = document.getElementById('backtest-results');
+    const emptyDiv = document.getElementById('backtest-empty');
+
+    // Show loading state
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Running...';
+    }
+    if (progressDiv) progressDiv.classList.remove('hidden');
+    if (progressBar) progressBar.style.width = '10%';
+    if (progressText) progressText.textContent = 'Fetching Nifty data...';
+    if (resultsDiv) resultsDiv.classList.add('hidden');
+    if (emptyDiv) emptyDiv.classList.add('hidden');
+
+    // Simulate progress updates
+    const progressSteps = [
+        { pct: 20, text: 'Fetching stock candles...' },
+        { pct: 50, text: 'Processing 50 stocks...' },
+        { pct: 75, text: 'Running strategy simulation...' },
+        { pct: 90, text: 'Calculating results...' },
+    ];
+    let stepIdx = 0;
+    const progressTimer = setInterval(() => {
+        if (stepIdx < progressSteps.length) {
+            if (progressBar) progressBar.style.width = progressSteps[stepIdx].pct + '%';
+            if (progressText) progressText.textContent = progressSteps[stepIdx].text;
+            stepIdx++;
+        }
+    }, 1500);
+
+    try {
+        const result = await fetchAPI('/backtest/run', {
+            method: 'POST',
+            body: JSON.stringify({ date: date })
+        });
+
+        clearInterval(progressTimer);
+
+        if (result.success && result.data) {
+            if (progressBar) progressBar.style.width = '100%';
+            if (progressText) progressText.textContent = 'Done!';
+
+            setTimeout(() => {
+                if (progressDiv) progressDiv.classList.add('hidden');
+                renderBacktestResults(result.data);
+            }, 500);
+        } else {
+            if (progressDiv) progressDiv.classList.add('hidden');
+            if (emptyDiv) emptyDiv.classList.remove('hidden');
+            alert('Backtest failed: ' + (result.error || result.message || 'Unknown error'));
+        }
+
+    } catch (error) {
+        clearInterval(progressTimer);
+        if (progressDiv) progressDiv.classList.add('hidden');
+        if (emptyDiv) emptyDiv.classList.remove('hidden');
+        alert('Backtest error: ' + error.message);
+    } finally {
+        _backtestRunning = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '🚀 Run Backtest';
+        }
+    }
+}
+
+function renderBacktestResults(data) {
+    const resultsDiv = document.getElementById('backtest-results');
+    const emptyDiv = document.getElementById('backtest-empty');
+
+    if (emptyDiv) emptyDiv.classList.add('hidden');
+    if (resultsDiv) resultsDiv.classList.remove('hidden');
+
+    const summary = data.summary || {};
+    const trades = data.trades || [];
+    const niftyGap = data.nifty_gap || {};
+    const selectedStocks = data.selected_stocks || [];
+
+    // --- Summary Cards ---
+    const totalPnl = summary.total_pnl || 0;
+    const totalPnlPct = summary.total_pnl_percent || 0;
+    const pnlColor = totalPnl >= 0 ? 'text-success' : 'text-danger';
+
+    const pnlEl = document.getElementById('bt-total-pnl');
+    if (pnlEl) {
+        pnlEl.textContent = `${totalPnl >= 0 ? '+' : ''}₹${totalPnl.toFixed(2)}`;
+        pnlEl.className = `text-2xl font-bold ${pnlColor}`;
+    }
+
+    const pnlPctEl = document.getElementById('bt-total-pnl-pct');
+    if (pnlPctEl) {
+        pnlPctEl.textContent = `${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct.toFixed(2)}%`;
+        pnlPctEl.className = `text-xs ${pnlColor}`;
+    }
+
+    const winRateEl = document.getElementById('bt-win-rate');
+    if (winRateEl) {
+        const wr = summary.win_rate || 0;
+        winRateEl.textContent = `${wr}%`;
+        winRateEl.className = `text-2xl font-bold ${wr >= 50 ? 'text-success' : wr > 0 ? 'text-warning' : 'text-text-muted'}`;
+    }
+
+    const winLossEl = document.getElementById('bt-win-loss');
+    if (winLossEl) winLossEl.textContent = `${summary.winners || 0}W / ${summary.losers || 0}L`;
+
+    const totalTradesEl = document.getElementById('bt-total-trades');
+    if (totalTradesEl) totalTradesEl.textContent = summary.total_trades || 0;
+
+    const maxWinEl = document.getElementById('bt-max-win');
+    if (maxWinEl) {
+        const mw = summary.max_win || 0;
+        maxWinEl.textContent = `+₹${mw.toFixed(2)}`;
+    }
+
+    const maxLossEl = document.getElementById('bt-max-loss');
+    if (maxLossEl) {
+        const ml = summary.max_loss || 0;
+        maxLossEl.textContent = `₹${ml.toFixed(2)}`;
+    }
+
+    // --- Nifty Gap Badge ---
+    const badge = document.getElementById('backtest-nifty-badge');
+    if (badge && niftyGap.valid) {
+        const gapPct = niftyGap.gap_percent || 0;
+        const gapStatus = niftyGap.gap_status || 'FLAT';
+        let badgeClass, badgeIcon;
+
+        if (gapStatus === 'GAP_UP') {
+            badgeClass = 'bg-success/20 text-success border border-success/30';
+            badgeIcon = '🟢';
+        } else if (gapStatus === 'GAP_DOWN') {
+            badgeClass = 'bg-danger/20 text-danger border border-danger/30';
+            badgeIcon = '🔴';
+        } else {
+            badgeClass = 'bg-warning/20 text-warning border border-warning/30';
+            badgeIcon = '⚪';
+        }
+
+        badge.className = `px-4 py-2 rounded-lg font-bold text-base ${badgeClass}`;
+        badge.innerHTML = `${badgeIcon} ${gapStatus.replace('_', ' ')} ${gapPct >= 0 ? '+' : ''}${gapPct}%`;
+    }
+
+    // --- Selected Stocks Table ---
+    const stocksBody = document.getElementById('bt-selected-stocks-body');
+    if (stocksBody) {
+        if (selectedStocks.length === 0) {
+            stocksBody.innerHTML = '<tr><td colspan="5" class="px-3 py-4 text-center text-text-muted">No stocks selected</td></tr>';
+        } else {
+            stocksBody.innerHTML = selectedStocks.map(s => {
+                const dirClass = s.direction === 'LONG' ? 'text-success' : 'text-danger';
+                const dirIcon = s.direction === 'LONG' ? '🟢' : '🔴';
+                const gapClass = (s.gap_percent || 0) >= 0 ? 'text-success' : 'text-danger';
+                return `
+                    <tr class="hover:bg-bg-elevated/50">
+                        <td class="px-3 py-2 font-semibold">${(s.symbol || '').replace('-EQ', '')}</td>
+                        <td class="px-3 py-2 text-center ${dirClass} font-medium">${dirIcon} ${s.direction}</td>
+                        <td class="px-3 py-2 text-right font-mono ${gapClass}">${(s.gap_percent || 0) >= 0 ? '+' : ''}${(s.gap_percent || 0).toFixed(2)}%</td>
+                        <td class="px-3 py-2 text-right font-mono">₹${(s.prev_close || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                        <td class="px-3 py-2 text-right font-mono">₹${(s.open_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    }
+
+    // --- Trades Table ---
+    const tradesBody = document.getElementById('bt-trades-body');
+    const noTradesDiv = document.getElementById('bt-no-trades');
+
+    if (trades.length === 0) {
+        if (tradesBody) tradesBody.innerHTML = '';
+        if (noTradesDiv) noTradesDiv.classList.remove('hidden');
+    } else {
+        if (noTradesDiv) noTradesDiv.classList.add('hidden');
+        if (tradesBody) {
+            tradesBody.innerHTML = trades.map((t, idx) => {
+                const dirClass = t.direction === 'LONG' ? 'text-success' : 'text-danger';
+                const dirIcon = t.direction === 'LONG' ? '🟢' : '🔴';
+                const pnlClass = t.pnl >= 0 ? 'text-success' : 'text-danger';
+                const pnlSign = t.pnl >= 0 ? '+' : '';
+
+                let reasonBadge = '';
+                if (t.exit_reason === 'TARGET') {
+                    reasonBadge = '<span class="px-2 py-0.5 rounded text-xs bg-success/20 text-success">TARGET ✅</span>';
+                } else if (t.exit_reason === 'STOP_LOSS') {
+                    reasonBadge = '<span class="px-2 py-0.5 rounded text-xs bg-danger/20 text-danger">SL ❌</span>';
+                } else if (t.exit_reason === 'SQUARE_OFF_315') {
+                    reasonBadge = '<span class="px-2 py-0.5 rounded text-xs bg-warning/20 text-warning">3:15 ⏰</span>';
+                } else {
+                    reasonBadge = '<span class="px-2 py-0.5 rounded text-xs bg-warning/20 text-warning">CLOSE 🔔</span>';
+                }
+
+                const entryTime = formatBacktestTime(t.entry_time);
+                const exitTime = formatBacktestTime(t.exit_time);
+
+                // Reference candle data
+                const ref = t.reference_candle || {};
+                const refHigh = ref.high ? `₹${ref.high.toFixed(2)}` : '-';
+                const refLow = ref.low ? `₹${ref.low.toFixed(2)}` : '-';
+                const largeBadge = ref.is_large_candle ? ' 🔶' : '';
+
+                return `
+                    <tr class="hover:bg-bg-elevated/50">
+                        <td class="px-3 py-2 text-text-muted">${idx + 1}</td>
+                        <td class="px-3 py-2 font-semibold">${(t.symbol || '').replace('-EQ', '')}</td>
+                        <td class="px-3 py-2 text-center ${dirClass} font-medium">${dirIcon} ${t.direction}</td>
+                        <td class="px-3 py-2 text-right font-mono text-accent">${refHigh}${largeBadge}</td>
+                        <td class="px-3 py-2 text-right font-mono text-accent">${refLow}</td>
+                        <td class="px-3 py-2 text-right font-mono">₹${t.entry_price.toFixed(2)}</td>
+                        <td class="px-3 py-2 text-text-secondary text-xs font-mono">${entryTime}</td>
+                        <td class="px-3 py-2 text-right font-mono text-text-secondary">₹${t.stop_loss.toFixed(2)}</td>
+                        <td class="px-3 py-2 text-right font-mono text-text-secondary">₹${t.target.toFixed(2)}</td>
+                        <td class="px-3 py-2 text-right font-mono font-medium">₹${t.exit_price.toFixed(2)}</td>
+                        <td class="px-3 py-2 text-text-secondary text-xs font-mono">${exitTime}</td>
+                        <td class="px-3 py-2 text-center">${reasonBadge}</td>
+                        <td class="px-3 py-2 text-right font-mono font-bold ${pnlClass}">${pnlSign}₹${t.pnl.toFixed(2)}</td>
+                        <td class="px-3 py-2 text-right font-mono ${pnlClass}">${pnlSign}${t.pnl_percent.toFixed(2)}%</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    }
+
+    // --- Report saved notice ---
+    const date = data.date || '';
+    if (date) {
+        const reportNotice = document.createElement('div');
+        reportNotice.className = 'mt-4 p-3 bg-bg-elevated rounded-lg text-sm text-text-secondary text-center';
+        reportNotice.innerHTML = `📄 Full report saved to <code class="px-1.5 py-0.5 bg-bg-surface rounded text-accent font-mono text-xs">data/backtest_reports/backtest_${date}.json</code> for manual verification`;
+        // Add to results div if not already present
+        const existingNotice = resultsDiv.querySelector('.backtest-report-notice');
+        if (existingNotice) existingNotice.remove();
+        reportNotice.classList.add('backtest-report-notice');
+        resultsDiv.appendChild(reportNotice);
+    }
+}
+
+function formatBacktestTime(timestamp) {
+    if (!timestamp) return '-';
+    try {
+        // Handle ISO format "2026-02-19T09:21:00+05:30" or "2026-02-19 09:21:00"
+        const dt = new Date(timestamp);
+        if (isNaN(dt)) return timestamp.substring(11, 16) || '-';
+        return dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    } catch {
+        return '-';
+    }
+}
+
+// Initialize backtest date picker with yesterday's date
+function initBacktestDatePicker() {
+    const dateInput = document.getElementById('backtest-date');
+    if (dateInput) {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        // Skip weekends (set to Friday if yesterday was Saturday or Sunday)
+        const day = yesterday.getDay();
+        if (day === 0) yesterday.setDate(yesterday.getDate() - 2); // Sunday → Friday
+        if (day === 6) yesterday.setDate(yesterday.getDate() - 1); // Saturday → Friday
+
+        dateInput.value = yesterday.toISOString().split('T')[0];
+        dateInput.max = yesterday.toISOString().split('T')[0];
+    }
+}
+
+// ==================== Backtest Calendar (FullCalendar) ====================
+
+let _calendarReports = {}; // { "2026-02-19": { total_pnl, total_trades, ... } }
+let _fullCalendar = null;
+
+function initBacktestCalendar() {
+    const calendarEl = document.getElementById('bt-fullcalendar');
+    if (!calendarEl || _fullCalendar) return;
+
+    _fullCalendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: ''
+        },
+        height: 'auto',
+        fixedWeekCount: false,       // 4 or 5 rows based on month
+        showNonCurrentDates: true,
+        dayMaxEvents: 3,
+        firstDay: 0,                 // Sunday start
+
+        // Date click → fill backtest input
+        dateClick: function (info) {
+            selectCalendarDate(info.dateStr);
+        },
+
+        // Event click → show detail tooltip
+        eventClick: function (info) {
+            info.jsEvent.preventDefault();
+            const dateStr = info.event.startStr;
+            showCalendarTooltip(dateStr);
+        },
+
+        // Style day cells based on reports
+        dayCellDidMount: function (info) {
+            const dateStr = formatDateStr(info.date);
+            const report = _calendarReports[dateStr];
+            if (report) {
+                info.el.style.cursor = 'pointer';
+            }
+        },
+
+        events: []
+    });
+
+    _fullCalendar.render();
+}
+
+function formatDateStr(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+// Legacy functions kept for backward compatibility
+function changeCalendarMonth(delta) {
+    if (!_fullCalendar) return;
+    if (delta > 0) _fullCalendar.next();
+    else _fullCalendar.prev();
+}
+
+function goToToday() {
+    if (!_fullCalendar) return;
+    _fullCalendar.today();
+}
+
+async function loadBacktestReports() {
+    try {
+        const result = await fetchAPI('/backtest/reports');
+        if (result.success && result.data && result.data.reports) {
+            _calendarReports = {};
+            result.data.reports.forEach(r => {
+                _calendarReports[r.date] = r;
+            });
+            updateCalendarEvents();
+        }
+    } catch (e) {
+        console.warn('Could not load backtest reports:', e);
+    }
+}
+
+function updateCalendarEvents() {
+    if (!_fullCalendar) {
+        initBacktestCalendar();
+    }
+    if (!_fullCalendar) return;
+
+    // Remove all existing events
+    _fullCalendar.removeAllEvents();
+
+    // Add events from reports
+    const events = [];
+    for (const [dateStr, report] of Object.entries(_calendarReports)) {
+        const isProfit = report.total_pnl > 0;
+        const isLoss = report.total_pnl < 0;
+
+        let cssClass = 'bt-neutral';
+        let pnlText = '₹0';
+
+        if (isProfit) {
+            cssClass = 'bt-profit';
+            pnlText = `+₹${Math.abs(report.total_pnl).toFixed(0)}`;
+        } else if (isLoss) {
+            cssClass = 'bt-loss';
+            pnlText = `-₹${Math.abs(report.total_pnl).toFixed(0)}`;
+        } else {
+            pnlText = 'No Signal';
+        }
+
+        // P&L event
+        events.push({
+            title: pnlText,
+            start: dateStr,
+            allDay: true,
+            classNames: [cssClass],
+            extendedProps: { type: 'pnl' }
+        });
+
+        // Win/Loss count event (secondary line)
+        if (report.total_trades > 0) {
+            events.push({
+                title: `${report.winners}W / ${report.losers}L`,
+                start: dateStr,
+                allDay: true,
+                classNames: [cssClass],
+                extendedProps: { type: 'stats' }
+            });
+        }
+    }
+
+    _fullCalendar.addEventSource(events);
+}
+
+// Renamed from renderBacktestCalendar for backward compat
+function renderBacktestCalendar() {
+    if (!_fullCalendar) {
+        initBacktestCalendar();
+    }
+    updateCalendarEvents();
+}
+
+function selectCalendarDate(dateStr) {
+    const dateInput = document.getElementById('backtest-date');
+    if (dateInput) {
+        dateInput.value = dateStr;
+    }
+    if (_calendarReports[dateStr]) {
+        showCalendarTooltip(dateStr);
+    }
+}
+
+function showCalendarTooltip(dateStr) {
+    const tooltip = document.getElementById('bt-calendar-tooltip');
+    if (!tooltip) return;
+
+    const report = _calendarReports[dateStr];
+    if (!report) {
+        tooltip.style.display = 'none';
+        return;
+    }
+
+    const isProfit = report.total_pnl >= 0;
+    const pnlColor = isProfit ? '#34c759' : '#ff453a';
+    const pnlSign = isProfit ? '+' : '';
+    const gapIcon = report.gap_status === 'GAP_UP' ? '🟢' : (report.gap_status === 'GAP_DOWN' ? '🔴' : '⚪');
+    const gapColor = report.gap_status === 'GAP_UP' ? '#34c759' : (report.gap_status === 'GAP_DOWN' ? '#ff453a' : '#ff9f0a');
+
+    tooltip.innerHTML = `
+        <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+                <div style="padding:4px 12px; background:rgba(44,44,46,0.5); border-radius:8px; border:1px solid rgba(56,56,58,0.5); font-size:12px; font-weight:800; color:#f5f5f7; letter-spacing:0.05em;">${dateStr}</div>
+                <div style="font-size:12px; font-weight:700; color:${gapColor};">
+                    ${gapIcon} ${report.gap_status || 'N/A'} (${report.gap_percent > 0 ? '+' : ''}${report.gap_percent}%)
+                </div>
+            </div>
+            <div style="font-size:24px; font-weight:900; color:${pnlColor}; letter-spacing:-0.02em;">
+                ${pnlSign}₹${report.total_pnl.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </div>
+        </div>
+        
+        <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:16px; padding-top:16px; border-top:1px solid rgba(56,56,58,0.3);">
+            <div>
+                <div style="font-size:10px; color:#86868b; font-weight:800; text-transform:uppercase; letter-spacing:0.08em;">Total Trades</div>
+                <div style="font-size:14px; font-weight:700; color:#f5f5f7; margin-top:2px;">${report.total_trades}</div>
+            </div>
+            <div>
+                <div style="font-size:10px; color:#86868b; font-weight:800; text-transform:uppercase; letter-spacing:0.08em;">Win Rate</div>
+                <div style="font-size:14px; font-weight:700; color:#f5f5f7; margin-top:2px;">${report.win_rate}%</div>
+            </div>
+            <div>
+                <div style="font-size:10px; color:#86868b; font-weight:800; text-transform:uppercase; letter-spacing:0.08em;">Winners</div>
+                <div style="font-size:14px; font-weight:700; color:#34c759; margin-top:2px;">${report.winners} W</div>
+            </div>
+            <div>
+                <div style="font-size:10px; color:#86868b; font-weight:800; text-transform:uppercase; letter-spacing:0.08em;">Losers</div>
+                <div style="font-size:14px; font-weight:700; color:#ff453a; margin-top:2px;">${report.losers} L</div>
+            </div>
+        </div>
+    `;
+    tooltip.style.display = 'block';
+}
+
+function hideCalendarTooltip() {
+    const tooltip = document.getElementById('bt-calendar-tooltip');
+    if (tooltip) tooltip.style.display = 'none';
 }
 
 async function refreshWatchlistData() {
@@ -2076,7 +2576,7 @@ window.addEventListener('resize', () => {
             });
         }
     });
-    
+
     // Resize Nifty chart if it exists
     if (niftyGapChart) {
         const chartContainer = document.getElementById('nifty-gap-chart');
@@ -2122,6 +2622,9 @@ function init() {
             }
         }
     }, 60000); // Check every minute
+
+    // Initialize backtest date picker
+    initBacktestDatePicker();
 
     console.log('📊 Trading Bot Dashboard initialized');
 }

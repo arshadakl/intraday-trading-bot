@@ -251,7 +251,7 @@ def create_app() -> Flask:
                 'stocks_selected': len(bot.selected_stocks) > 0 if hasattr(bot, 'selected_stocks') else False,
                 'stocks_count': len(bot.selected_stocks) if hasattr(bot, 'selected_stocks') else 0,
                 'has_positions': hasattr(bot, 'position_tracker') and bot.position_tracker is not None,
-                'websocket_connected': hasattr(bot, 'websocket') and bot.websocket is not None and bot.websocket.is_connected() if hasattr(bot, 'websocket') else False,
+                'websocket_connected': hasattr(bot, 'websocket') and bot.websocket is not None and bot.websocket.is_connected if hasattr(bot, 'websocket') else False,
                 'strategy_loaded': hasattr(bot, 'strategy') and bot.strategy is not None,
                 'analysis_completed': bool(bot.market_analysis) if hasattr(bot, 'market_analysis') else False,
             }
@@ -364,8 +364,7 @@ def create_app() -> Flask:
                 # Return basic strategy info even if bot not running
                 # Import strategies to trigger registration via decorators
                 from src.strategy.strategy_registry import StrategyRegistry
-                from src.strategy.vwap_rsi_strategy import VWAPRSIStrategy  # noqa: F401
-                from src.strategy.ohl_strategy import OHLStrategy  # noqa: F401
+                from src.strategy.three_minute_strategy import ThreeMinuteStrategy  # noqa: F401
                 strategies = StrategyRegistry.get_all_strategies_info()
                 return success_response({
                     'strategies': strategies,
@@ -923,14 +922,14 @@ def create_app() -> Flask:
             if err:
                 return err
             
-            # Get interval from query params (default to 5 minutes)
-            interval = request.args.get('interval', 'FIVE_MINUTE')
+            # Get interval from query params (default to 3 minutes — matches strategy timeframe)
+            interval = request.args.get('interval', 'THREE_MINUTE')
             days = int(request.args.get('days', '1'))
             
             # Validate interval
-            valid_intervals = ['ONE_MINUTE', 'THREE_MINUTE', 'FIVE_MINUTE', 'TEN_MINUTE', 'FIFTEEN_MINUTE', 'THIRTY_MINUTE', 'ONE_HOUR']
+            valid_intervals = ['ONE_MINUTE', 'THREE_MINUTE', 'FIVE_MINUTE', 'TEN_MINUTE', 'FIFTEEN_MINUTE', 'THIRTY_MINUTE', 'ONE_HOUR', 'ONE_DAY']
             if interval not in valid_intervals:
-                interval = 'FIVE_MINUTE'
+                interval = 'THREE_MINUTE'
             
             # Fetch Nifty 50 historical data from AngelOne
             hist_data = bot.angel_client.get_historical_data(
@@ -1029,11 +1028,11 @@ def create_app() -> Flask:
             if not stock:
                 return error_response(f"Stock {symbol} not found in selected stocks or positions")
             
-            # Get historical data from Angel One
+            # Get historical data from Angel One (3-minute candles to match strategy)
             hist_data = bot.angel_client.get_historical_data(
                 symbol=symbol,
                 token=stock.get('token'),
-                interval="ONE_MINUTE",
+                interval="THREE_MINUTE",
                 days=1
             )
             
@@ -1100,6 +1099,208 @@ def create_app() -> Flask:
         except Exception as e:
             logger.error(f"Error fetching stock history for {symbol}: {e}")
             return error_response(f"Error fetching historical data: {str(e)}")
+    
+    # ==================== Backtest ====================
+    
+    @app.route('/api/backtest/run', methods=['POST'])
+    @require_auth
+    def run_backtest():
+        """Run backtest for a specific date using the 3-minute breakout strategy."""
+        import time as time_mod
+        
+        try:
+            bot, err = get_bot()
+            if err:
+                return err
+            
+            data = request.get_json() or {}
+            date_str = data.get('date', '')
+            
+            if not date_str:
+                return error_response("Date is required (YYYY-MM-DD)")
+            
+            # Validate date format
+            from datetime import datetime as dt_cls
+            try:
+                target_date = dt_cls.strptime(date_str, "%Y-%m-%d")
+            except ValueError:
+                return error_response("Invalid date format. Use YYYY-MM-DD")
+            
+            # Don't allow future dates
+            from src.utils.timezone import now_ist
+            if target_date.date() >= now_ist().date():
+                return error_response("Cannot backtest future or today's date")
+            
+            logger.info(f"📊 Starting backtest for {date_str}...")
+            
+            # Get stock list from nifty50.json
+            import json
+            from pathlib import Path
+            nifty_file = Path("config/nifty50.json")
+            
+            if not nifty_file.exists():
+                return error_response("Nifty 50 data not available. Run the bot at least once to fetch data.")
+            
+            with open(nifty_file, 'r', encoding='utf-8') as f:
+                nifty_data = json.load(f)
+            
+            stock_list = nifty_data.get('stocks', [])
+            if not stock_list:
+                return error_response("No stocks found in Nifty 50 data")
+            
+            # --- Fetch Nifty 50 index candles ---
+            nifty_candles = bot.angel_client.get_historical_data_for_date(
+                symbol="NIFTY",
+                token="99926000",
+                date_str=date_str,
+                interval="THREE_MINUTE",
+                exchange="NSE",
+                include_prev_day=True,
+            )
+            
+            if not nifty_candles:
+                return error_response(f"No Nifty data available for {date_str}. Market may have been closed.")
+            
+            # --- Fetch stock candles (with throttling) ---
+            all_stock_candles = {}
+            fetched = 0
+            failed = 0
+            
+            for stock in stock_list:
+                symbol = stock.get('symbol', '')
+                token = stock.get('token', '')
+                
+                if not symbol or not token:
+                    failed += 1
+                    continue
+                
+                candles = bot.angel_client.get_historical_data_for_date(
+                    symbol=symbol,
+                    token=token,
+                    date_str=date_str,
+                    interval="THREE_MINUTE",
+                    exchange="NSE",
+                    include_prev_day=True,
+                )
+                
+                if candles:
+                    all_stock_candles[symbol] = candles
+                    fetched += 1
+                else:
+                    failed += 1
+                
+                # Throttle: 100ms between requests to avoid rate limits
+                time_mod.sleep(0.1)
+            
+            logger.info(f"📊 Backtest data fetched: {fetched} stocks OK, {failed} failed")
+            
+            if fetched == 0:
+                return error_response(f"Could not fetch any stock data for {date_str}")
+            
+            # --- Run backtest engine ---
+            from src.backtest.backtest_engine import BacktestEngine
+            from src.core.config_manager import get_config
+            
+            config = get_config()
+            config_dict = {
+                "strategies": {
+                    "three_minute": {
+                        "params": config.get("strategies.three_minute.params", {})
+                    }
+                }
+            }
+            
+            engine = BacktestEngine(config_dict)
+            result = engine.run(
+                date_str=date_str,
+                nifty_candles=nifty_candles,
+                all_stock_candles=all_stock_candles,
+                stock_list=stock_list,
+            )
+            
+            logger.info(
+                f"📊 Backtest complete for {date_str}: "
+                f"{result.summary.get('total_trades', 0)} trades, "
+                f"P&L: ₹{result.summary.get('total_pnl', 0):.2f}, "
+                f"Win rate: {result.summary.get('win_rate', 0)}%"
+            )
+            
+            return success_response(result.to_dict())
+            
+        except Exception as e:
+            logger.error(f"Error running backtest: {e}")
+            import traceback
+            traceback.print_exc()
+            return error_response(f"Backtest error: {str(e)}")
+    
+    @app.route('/api/backtest/stocks', methods=['GET'])
+    @require_auth
+    def get_backtest_stocks():
+        """Get list of available stocks for backtesting."""
+        try:
+            import json
+            from pathlib import Path
+            nifty_file = Path("config/nifty50.json")
+            
+            if not nifty_file.exists():
+                return error_response("Nifty 50 data not available")
+            
+            with open(nifty_file, 'r', encoding='utf-8') as f:
+                nifty_data = json.load(f)
+            
+            stocks = nifty_data.get('stocks', [])
+            return success_response({
+                'count': len(stocks),
+                'stocks': [
+                    {
+                        'symbol': s.get('symbol', ''),
+                        'token': s.get('token', ''),
+                    }
+                    for s in stocks if s.get('token')
+                ]
+            })
+            
+        except Exception as e:
+            return error_response(f"Error: {str(e)}")
+    
+    @app.route('/api/backtest/reports', methods=['GET'])
+    @require_auth
+    def get_backtest_reports():
+        """Get summaries of all saved backtest reports for calendar view."""
+        try:
+            import json
+            from pathlib import Path
+            
+            report_dir = Path("data/backtest_reports")
+            if not report_dir.exists():
+                return success_response({"reports": []})
+            
+            reports = []
+            for f in sorted(report_dir.glob("backtest_*.json")):
+                try:
+                    with open(f, 'r', encoding='utf-8') as fh:
+                        data = json.load(fh)
+                    
+                    summary = data.get("trade_results", {}).get("summary", {})
+                    nifty = data.get("nifty_gap_analysis", {})
+                    
+                    reports.append({
+                        "date": data.get("backtest_date", ""),
+                        "total_pnl": summary.get("total_pnl", 0),
+                        "total_trades": summary.get("total_trades", 0),
+                        "win_rate": summary.get("win_rate", 0),
+                        "winners": summary.get("winners", 0),
+                        "losers": summary.get("losers", 0),
+                        "gap_status": nifty.get("gap_status", ""),
+                        "gap_percent": nifty.get("gap_percent", 0),
+                    })
+                except Exception:
+                    continue
+            
+            return success_response({"reports": reports})
+            
+        except Exception as e:
+            return error_response(f"Error: {str(e)}")
     
     # ==================== Health Check ====================
     

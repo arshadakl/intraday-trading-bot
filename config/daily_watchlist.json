@@ -1,151 +1,47 @@
 {
-  "date": "2026-02-19",
-  "generated_at": "2026-02-19T09:14:59.438646+05:30",
-  "market_status": "PRE_OPEN",
-  "strategy_name": "3-Minute Breakdown",
-  "selection_criteria": "Top 4 Gap Up & Top 4 Gap Down",
-  "nifty_trend": "WAITING",
+  "date": "2025-01-01",
   "stocks": {
     "bullish": [
       {
-        "rank": 1,
-        "symbol": "ONGC-EQ",
-        "token": "2475",
-        "name": "ONGC",
-        "iep": 270.3,
-        "last_price": 270.3,
-        "prev_close": 264.6,
-        "change": 5.7,
-        "change_percent": 2.15,
-        "gap_percent": 2.15,
-        "gap_type": "BULLISH",
-        "volume": 0,
-        "final_quantity": 190594,
-        "year_high": 280.3,
-        "year_low": 205.0
+        "symbol": "STOCK_A",
+        "gap_percent": 3.0,
+        "direction": "SHORT"
       },
       {
-        "rank": 2,
-        "symbol": "HINDALCO-EQ",
-        "token": "1363",
-        "name": "HINDALCO",
-        "iep": 910.6,
-        "last_price": 910.6,
-        "prev_close": 899.25,
-        "change": 11.35,
-        "change_percent": 1.26,
-        "gap_percent": 1.26,
-        "gap_type": "BULLISH",
-        "volume": 0,
-        "final_quantity": 17095,
-        "year_high": 1029.8,
-        "year_low": 546.45
-      },
-      {
-        "rank": 3,
-        "symbol": "WIPRO-EQ",
-        "token": "3787",
-        "name": "WIPRO",
-        "iep": 214.0,
-        "last_price": 214.0,
-        "prev_close": 211.95,
-        "change": 2.05,
-        "change_percent": 0.97,
-        "gap_percent": 0.97,
-        "gap_type": "BULLISH",
-        "volume": 0,
-        "final_quantity": 68533,
-        "year_high": 316.5,
-        "year_low": 209.01
-      },
-      {
-        "rank": 4,
-        "symbol": "TATASTEEL-EQ",
-        "token": "3499",
-        "name": "TATASTEEL",
-        "iep": 211.0,
-        "last_price": 211.0,
-        "prev_close": 209.03,
-        "change": 1.97,
-        "change_percent": 0.94,
-        "gap_percent": 0.94,
-        "gap_type": "BULLISH",
-        "volume": 0,
-        "final_quantity": 267308,
-        "year_high": 211.1,
-        "year_low": 125.3
+        "symbol": "STOCK_B",
+        "gap_percent": 2.5
       }
     ],
     "bearish": [
       {
-        "rank": 51,
-        "symbol": "KWIL-EQ",
-        "token": "",
-        "name": "KWIL",
-        "iep": 28.16,
-        "last_price": 28.16,
-        "prev_close": 29.33,
-        "change": -1.17,
-        "change_percent": -3.99,
-        "gap_percent": -3.99,
-        "gap_type": "BEARISH",
-        "volume": 0,
-        "final_quantity": 7689700,
-        "year_high": 31.29,
-        "year_low": 26.56
+        "symbol": "STOCK_C",
+        "gap_percent": -3.0,
+        "direction": "LONG"
       },
       {
-        "rank": 50,
-        "symbol": "INDIGO-EQ",
-        "token": "11195",
-        "name": "INDIGO",
-        "iep": 4939.0,
-        "last_price": 4939.0,
-        "prev_close": 4980.4,
-        "change": -41.4,
-        "change_percent": -0.83,
-        "gap_percent": -0.83,
-        "gap_type": "BEARISH",
-        "volume": 0,
-        "final_quantity": 4761,
-        "year_high": 6232.5,
-        "year_low": 4255.0
-      },
-      {
-        "rank": 49,
-        "symbol": "MAXHEALTH-EQ",
-        "token": "22377",
-        "name": "MAXHEALTH",
-        "iep": 1080.0,
-        "last_price": 1080.0,
-        "prev_close": 1086.25,
-        "change": -6.25,
-        "change_percent": -0.58,
-        "gap_percent": -0.58,
-        "gap_type": "BEARISH",
-        "volume": 0,
-        "final_quantity": 975,
-        "year_high": 1314.3,
-        "year_low": 933.8
-      },
-      {
-        "rank": 48,
-        "symbol": "TITAN-EQ",
-        "token": "3506",
-        "name": "TITAN",
-        "iep": 4225.0,
-        "last_price": 4225.0,
-        "prev_close": 4248.6,
-        "change": -23.6,
-        "change_percent": -0.56,
-        "gap_percent": -0.56,
-        "gap_type": "BEARISH",
-        "volume": 0,
-        "final_quantity": 1547,
-        "year_high": 4378.4,
-        "year_low": 2925.0
+        "symbol": "STOCK_D",
+        "gap_percent": -2.5
       }
     ]
   },
-  "active_set": "BOTH"
+  "market_status": "OPEN",
+  "nifty_trend": "FLAT",
+  "nifty_gap_percent": 0.1,
+  "active_set": "BOTH",
+  "selected_stocks": [
+    {
+      "symbol": "STOCK_C",
+      "gap_percent": -3.0,
+      "direction": "LONG"
+    },
+    {
+      "symbol": "STOCK_A",
+      "gap_percent": 3.0,
+      "direction": "SHORT"
+    }
+  ],
+  "trade_direction": "MIXED",
+  "max_trades": 2,
+  "filter_reason": "Nifty Flat (+0.10%). LONG bottom 1, SHORT top 1.",
+  "updated_at": "2026-02-21T21:32:03.567848+05:30"
 }

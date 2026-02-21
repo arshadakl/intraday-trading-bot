@@ -93,68 +93,90 @@ class DailyWatchlistManager:
     def filter_watchlist_at_market_open(self, nifty_gap_percent: float, max_trades: int = 2) -> Dict:
         """
         Filter the watchlist at 9:15 AM based on Nifty opening gap.
-        
-        MEAN REVERSION LOGIC:
-        - Nifty GAP_UP → SHORT top stocks (fade the gap)
-        - Nifty GAP_DOWN → LONG bottom stocks (fade the gap)
-        - FLAT → Both directions with split allocation
-        
+
+        BREAKOUT LOGIC (per strategy spec):
+        - Nifty GAP_UP  → SHORT top-ranked stocks
+        - Nifty GAP_DOWN → LONG bottom-ranked stocks
+        - FLAT           → Both directions (top→SHORT, bottom→LONG)
+
+        Each selected stock is stamped with a 'direction' key ("LONG" or "SHORT")
+        so the strategy knows which side to trade.
+
         Args:
             nifty_gap_percent: The gap percentage of Nifty 50 index
             max_trades: Maximum number of trades per day (default: 2)
-            
+
         Returns:
             Updated watchlist dictionary with selected stocks for trading
         """
         watchlist = self.get_watchlist()
         if not watchlist:
             return {}
-        
-        # Gap threshold: 0.2% (strict to avoid noise)
-        threshold = 0.2
-        
+
+        # Read threshold from config; fall back to 0.2%
+        params = self.config.get("strategies.three_minute.params", {})
+        threshold = float(params.get("gap_threshold_percent", 0.2))
+
         top_stocks = watchlist.get('stocks', {}).get('bullish', [])
         bottom_stocks = watchlist.get('stocks', {}).get('bearish', [])
-        
+
         if nifty_gap_percent > threshold:
-            # GAP UP: Short the strongest stocks (mean reversion)
+            # GAP UP → SHORT the top-ranked (strongest gap-up) stocks
             trend = "GAP_UP"
-            active_set = "BEARISH"  # Short top stocks
-            selected_stocks = top_stocks[:max_trades]
+            active_set = "TOP"
+            selected = top_stocks[:max_trades]
+            for s in selected:
+                s['direction'] = "SHORT"
             trade_direction = "SHORT"
-            summary = f"Nifty Gap Up ({nifty_gap_percent:.2f}%). Fading gap - SHORT top {max_trades} stocks."
-            
+            summary = (
+                f"Nifty Gap Up ({nifty_gap_percent:+.2f}%). "
+                f"SHORT top {len(selected)} stocks."
+            )
+
         elif nifty_gap_percent < -threshold:
-            # GAP DOWN: Long the weakest stocks (mean reversion)
+            # GAP DOWN → LONG the bottom-ranked (weakest gap-down) stocks
             trend = "GAP_DOWN"
-            active_set = "BULLISH"  # Long bottom stocks
-            selected_stocks = bottom_stocks[:max_trades]
+            active_set = "BOTTOM"
+            selected = bottom_stocks[:max_trades]
+            for s in selected:
+                s['direction'] = "LONG"
             trade_direction = "LONG"
-            summary = f"Nifty Gap Down ({nifty_gap_percent:.2f}%). Fading gap - LONG bottom {max_trades} stocks."
-            
+            summary = (
+                f"Nifty Gap Down ({nifty_gap_percent:+.2f}%). "
+                f"LONG bottom {len(selected)} stocks."
+            )
+
         else:
-            # FLAT: Both directions with split allocation
+            # FLAT → Both directions, split allocation
             trend = "FLAT"
             active_set = "BOTH"
-            # Split max_trades between both directions
             trades_per_side = max(1, max_trades // 2)
-            selected_stocks = {
-                'long': bottom_stocks[:trades_per_side],
-                'short': top_stocks[:trades_per_side]
-            }
+
+            long_picks = bottom_stocks[:trades_per_side]
+            for s in long_picks:
+                s['direction'] = "LONG"
+
+            short_picks = top_stocks[:trades_per_side]
+            for s in short_picks:
+                s['direction'] = "SHORT"
+
+            selected = long_picks + short_picks
             trade_direction = "MIXED"
-            summary = f"Nifty Flat ({nifty_gap_percent:.2f}%). Trading both sides - LONG bottom {trades_per_side}, SHORT top {trades_per_side}."
-        
+            summary = (
+                f"Nifty Flat ({nifty_gap_percent:+.2f}%). "
+                f"LONG bottom {len(long_picks)}, SHORT top {len(short_picks)}."
+            )
+
         watchlist['market_status'] = "OPEN"
         watchlist['nifty_trend'] = trend
         watchlist['nifty_gap_percent'] = nifty_gap_percent
         watchlist['active_set'] = active_set
-        watchlist['selected_stocks'] = selected_stocks
+        watchlist['selected_stocks'] = selected
         watchlist['trade_direction'] = trade_direction
         watchlist['max_trades'] = max_trades
         watchlist['filter_reason'] = summary
         watchlist['updated_at'] = now_ist().isoformat()
-        
+
         self._save_watchlist(watchlist)
         logger.info(f"✅ Watchlist filtered: {summary}")
         return watchlist
