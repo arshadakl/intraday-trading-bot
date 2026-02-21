@@ -48,7 +48,7 @@ class TradingBot:
         
         # Strategy & Execution
         self.strategy: Optional[BaseStrategy] = None
-        self.current_strategy_name: str = "vwap_rsi"  # Track active strategy name
+        self.current_strategy_name: str = "three_minute"  # Track active strategy name
         self.risk_manager: Optional[RiskManager] = None
         self.order_manager: Optional[OrderManager] = None
         self.position_tracker: Optional[PositionTracker] = None
@@ -239,11 +239,8 @@ class TradingBot:
             
             # 5. Register and initialize strategy from registry (dynamic, not hardcoded)
             # Import strategies here to trigger registration (avoids circular imports)
-            from src.strategy.vwap_rsi_strategy import VWAPRSIStrategy  # noqa: F401
-            from src.strategy.ohl_strategy import OHLStrategy  # noqa: F401
             from src.strategy.three_minute_strategy import ThreeMinuteStrategy  # noqa: F401
             # Import stock pickers to trigger registration
-            from src.analysis.stock_pickers.ohl_picker import OHLStockPicker  # noqa: F401
             from src.analysis.stock_pickers.preopen_gap_picker import PreOpenGapPicker  # noqa: F401
             
             active_strategy_name = self.config.get('active_strategy', 'three_minute')

@@ -119,16 +119,15 @@
                     <div class="space-y-3 mb-4">
                         <div class="space-y-1">
                             <span class="text-xs text-text-muted uppercase tracking-wide">Active Strategy</span>
-                            <div id="active-strategy-name" class="text-base font-medium text-accent">VWAP + RSI Momentum
+                            <div id="active-strategy-name" class="text-base font-medium text-accent">3-Minute Strategy (Pre-Open Gap)
                             </div>
                         </div>
-                        <p id="strategy-description" class="text-sm text-text-secondary">Price crosses VWAP with RSI
-                            confirmation</p>
+                        <p id="strategy-description" class="text-sm text-text-secondary">Trade gap-up/gap-down stocks identified from NSE pre-open session with candle breakout confirmation</p>
                     </div>
 
                     <div class="space-y-3">
                         <select id="strategy-select" class="form-select">
-                            <option value="vwap_rsi">VWAP + RSI Momentum</option>
+                            <option value="three_minute">3-Minute Strategy (Pre-Open Gap)</option>
                         </select>
                         <button id="btn-switch-strategy"
                             class="w-full px-4 py-2 bg-accent/10 text-accent border border-accent/20 rounded-lg text-sm font-medium transition-colors duration-200 hover:bg-accent/20 disabled:opacity-50 disabled:cursor-not-allowed"

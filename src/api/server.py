@@ -251,7 +251,7 @@ def create_app() -> Flask:
                 'stocks_selected': len(bot.selected_stocks) > 0 if hasattr(bot, 'selected_stocks') else False,
                 'stocks_count': len(bot.selected_stocks) if hasattr(bot, 'selected_stocks') else 0,
                 'has_positions': hasattr(bot, 'position_tracker') and bot.position_tracker is not None,
-                'websocket_connected': hasattr(bot, 'websocket') and bot.websocket is not None and bot.websocket.is_connected() if hasattr(bot, 'websocket') else False,
+                'websocket_connected': hasattr(bot, 'websocket') and bot.websocket is not None and bot.websocket.is_connected if hasattr(bot, 'websocket') else False,
                 'strategy_loaded': hasattr(bot, 'strategy') and bot.strategy is not None,
                 'analysis_completed': bool(bot.market_analysis) if hasattr(bot, 'market_analysis') else False,
             }
@@ -364,8 +364,7 @@ def create_app() -> Flask:
                 # Return basic strategy info even if bot not running
                 # Import strategies to trigger registration via decorators
                 from src.strategy.strategy_registry import StrategyRegistry
-                from src.strategy.vwap_rsi_strategy import VWAPRSIStrategy  # noqa: F401
-                from src.strategy.ohl_strategy import OHLStrategy  # noqa: F401
+                from src.strategy.three_minute_strategy import ThreeMinuteStrategy  # noqa: F401
                 strategies = StrategyRegistry.get_all_strategies_info()
                 return success_response({
                     'strategies': strategies,

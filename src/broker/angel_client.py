@@ -28,6 +28,10 @@ class AngelOneClient:
         self.password = os.getenv("ANGEL_PASSWORD")
         self.totp_secret = os.getenv("ANGEL_TOTP_SECRET")
         
+        # Cache for historical data (key: (symbol, token, interval), value: (data, timestamp))
+        self._hist_cache: Dict[tuple, tuple] = {}
+        self._hist_cache_ttl = 60  # Cache TTL in seconds
+        
         # Load API keys for different purposes
         self.trading_api_key = os.getenv("ANGEL_TRADING_API_KEY") or os.getenv("ANGEL_API_KEY")
         self.historical_api_key = os.getenv("ANGEL_HISTORICAL_API_KEY") or self.trading_api_key
@@ -186,15 +190,50 @@ class AngelOneClient:
         """Get full quote data for a symbol"""
         if not self.is_authenticated:
             return None
-            
+        
+        if token == "99926000" and symbol.upper() == "NIFTY":
+            return self._get_nifty_index_quote()
+        
         try:
-            data = self.smart_api.getQuote(exchange, symbol, token)
-            if data.get("status"):
-                return data["data"]
+            ltp_result = self.smart_api.ltpData(exchange, symbol, token)
+            if ltp_result and ltp_result.get("status"):
+                data = ltp_result.get("data", {})
+                return {
+                    "symbol": data.get("symbol"),
+                    "token": data.get("token"),
+                    "ltp": data.get("ltp"),
+                    "open": data.get("open"),
+                    "high": data.get("high"),
+                    "low": data.get("low"),
+                    "close": data.get("close"),
+                    "previousClose": data.get("previousClose"),
+                    "volume": data.get("volume"),
+                }
             return None
         except Exception as e:
             logger.error(f"Error fetching quote for {symbol}: {e}")
             return None
+    
+    def _get_nifty_index_quote(self) -> Optional[Dict]:
+        """Get NIFTY index quote from NSE pre-open data"""
+        try:
+            from src.analysis.nse_preopen_fetcher import get_nse_preopen_fetcher
+            fetcher = get_nse_preopen_fetcher(segment='nifty')
+            data = fetcher.fetch_final_preopen_data(wait_if_not_ready=False)
+            if data and len(data) > 0:
+                nifty_info = data[0]
+                return {
+                    "symbol": "NIFTY",
+                    "token": "99926000",
+                    "ltp": nifty_info.get('iep'),
+                    "open": nifty_info.get('open'),
+                    "high": nifty_info.get('high'),
+                    "low": nifty_info.get('low'),
+                    "previousClose": nifty_info.get('previousClose') or nifty_info.get('pp'),
+                }
+        except Exception as e:
+            logger.error(f"Error fetching NIFTY from NSE: {e}")
+        return None
     
     def get_historical_data(
         self,
@@ -212,9 +251,16 @@ class AngelOneClient:
         """
         if not self.is_authenticated:
             return None
-            
+        
         import time
         from src.utils.timezone import now_ist_time
+        
+        # Check cache first
+        cache_key = (symbol, token, interval, days)
+        if cache_key in self._hist_cache:
+            cached_data, cached_time = self._hist_cache[cache_key]
+            if time.time() - cached_time < self._hist_cache_ttl:
+                return cached_data
         
         # [FIX] Reduce retries during market hours (9:00-15:30) when API is overloaded
         current_time = now_ist_time()
@@ -246,7 +292,7 @@ class AngelOneClient:
                 if data.get("status"):
                     if data.get("data"):
                         candles = data["data"]
-                        return [
+                        result = [
                             {
                                 "timestamp": candle[0],
                                 "open": float(candle[1]),
@@ -257,6 +303,8 @@ class AngelOneClient:
                             }
                             for candle in candles
                         ]
+                        self._hist_cache[cache_key] = (result, time.time())
+                        return result
                     else:
                         logger.debug(f"{symbol}: No data in successful response")
                         return None
