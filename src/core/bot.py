@@ -445,8 +445,8 @@ class TradingBot:
                         hist_df = self.pre_market_analyzer.broker.get_historical_data(
                             symbol=stock['symbol'],
                             token=stock['token'],
-                            interval="ONE_MINUTE",
-                            days=1 # 1 day of 1-minute candles is ~375 candles, plenty for RSI
+                            interval="THREE_MINUTE",
+                            days=1  # 1 day of 3-minute candles is ~125 candles
                         )
                         if hist_df:
                             from src.analysis.indicators import prepare_dataframe
@@ -1347,7 +1347,12 @@ class TradingBot:
         self._log_activity("SYSTEM", "Daily state reset complete")
 
     def _apply_three_minute_market_open_filter(self) -> None:
-        """Apply 9:15 AM direction filter (gap up/down/flat) for 3-minute strategy."""
+        """Apply 9:15 AM direction filter (gap up/down/flat) for 3-minute strategy.
+
+        Reads the Nifty gap from nifty50.json, classifies as GAP_UP/GAP_DOWN/FLAT,
+        selects stocks using daily_watchlist, stamps each with a direction, and
+        passes them to the strategy via set_gap_candidates().
+        """
         if not self.strategy or self.strategy.name != "three_minute" or not self.selected_stocks:
             return
 
@@ -1361,6 +1366,7 @@ class TradingBot:
             if not watchlist:
                 return
 
+            # --- Calculate Nifty gap % ---
             nifty_gap_percent = 0.0
             try:
                 with open("config/nifty50.json", "r", encoding="utf-8") as f:
@@ -1373,29 +1379,63 @@ class TradingBot:
             except Exception:
                 nifty_gap_percent = 0.0
 
+            # --- Filter watchlist based on gap ---
             strategy_params = self.config.get('strategies.three_minute.params', {})
-            max_trades = int(strategy_params.get('stocks_per_side', 4))
-            filtered = manager.filter_watchlist_at_market_open(nifty_gap_percent=nifty_gap_percent, max_trades=max_trades)
+            max_trades = int(strategy_params.get('max_trades_per_day', 2))
+            filtered = manager.filter_watchlist_at_market_open(
+                nifty_gap_percent=nifty_gap_percent,
+                max_trades=max_trades,
+            )
             selected = filtered.get("selected_stocks")
             if not selected:
                 return
 
-            if isinstance(selected, dict):
-                symbols = {s.get("symbol") for side in selected.values() for s in side}
+            # selected is always a flat list now (daily_watchlist was fixed)
+            if isinstance(selected, list):
+                selected_list = selected
+            elif isinstance(selected, dict):
+                # Backward compat: flatten dict of sides
+                selected_list = []
+                for side_stocks in selected.values():
+                    if isinstance(side_stocks, list):
+                        selected_list.extend(side_stocks)
             else:
-                symbols = {s.get("symbol") for s in selected}
-            symbols.discard(None)
-            if not symbols:
                 return
 
+            # Build symbol -> direction map from watchlist selection
+            direction_map = {}
+            for s in selected_list:
+                sym = s.get("symbol")
+                if sym:
+                    direction_map[sym] = s.get("direction", "LONG")
+
+            if not direction_map:
+                return
+
+            # Filter self.selected_stocks to only include symbols from the watchlist
             before = len(self.selected_stocks)
-            self.selected_stocks = [s for s in self.selected_stocks if s.get("symbol") in symbols]
+            self.selected_stocks = [
+                s for s in self.selected_stocks
+                if s.get("symbol") in direction_map
+            ]
+
+            # Stamp direction on each selected stock
+            for stock in self.selected_stocks:
+                stock["direction"] = direction_map.get(stock["symbol"], "LONG")
+
             after = len(self.selected_stocks)
             if after > 0 and hasattr(self.strategy, "set_gap_candidates"):
                 self.strategy.set_gap_candidates(self.selected_stocks)
-            logger.info(f"3-Minute market-open filter applied: {before} -> {after} stocks (Nifty gap {nifty_gap_percent:+.2f}%)")
+
+            logger.info(
+                f"3-Minute market-open filter applied: {before} -> {after} stocks "
+                f"(Nifty gap {nifty_gap_percent:+.2f}%) | "
+                f"Directions: {direction_map}"
+            )
         except Exception as e:
             logger.warning(f"Failed to apply 3-minute market-open filter: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _start_monitoring(self) -> None:
         """Start WebSocket monitoring for selected stocks"""
@@ -2118,8 +2158,11 @@ class TradingBot:
 
             # Update strategy if relevant settings changed
             if self.strategy:
-                self.strategy.stop_loss_percent = self.config.stop_loss_percent
-                self.strategy.target_percent = self.config.target_percent
+                if hasattr(self.strategy, '_load_params'):
+                    self.strategy._load_params()
+                else:
+                    self.strategy.stop_loss_percent = self.config.stop_loss_percent
+                    self.strategy.target_percent = self.config.target_percent
 
             # Check if capital configuration was updated
             capital_keys = ['capital.use_percentage', 'capital.trading_percentage', 'capital.fixed_amount', 'capital.per_trade_percentage']

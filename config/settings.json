@@ -18,22 +18,17 @@
   "strategies": {
     "three_minute": {
       "enabled": true,
-      "display_name": "3-Minute Strategy (Pre-Open Gap)",
-      "description": "Trade gap-up/gap-down stocks identified from NSE pre-open session with candle breakout confirmation",
+      "display_name": "3-Minute Breakout Strategy",
+      "description": "Breakout strategy using 3-minute reference candle. SHORT top stocks on gap-up, LONG bottom stocks on gap-down.",
       "stock_picker": "preopen_gap",
       "params": {
-        "min_gap_percent": 1.0,
-        "max_gap_percent": 8.0,
-        "entry_window_start": "09:20",
-        "entry_window_end": "10:30",
+        "gap_threshold_percent": 0.2,
+        "large_candle_percent": 1.0,
         "stop_loss_percent": 1.0,
-        "target_percent": 2.0,
-        "risk_reward_ratio": 2.0,
-        "max_sl_percent": 2.0,
-        "require_nifty_alignment": true,
-        "use_opening_range_breakout": true,
-        "opening_range_minutes": 5,
-        "max_trades_per_day": 5
+        "target_percent": 1.0,
+        "max_trades_per_day": 2,
+        "stocks_per_side": 4,
+        "no_new_trade_after": "15:00"
       }
     }
   },
@@ -41,10 +36,10 @@
     "name": "three_minute",
     "stop_loss_percent": 1.0,
     "stop_loss_max": 2.0,
-    "target_percent": 2.0,
+    "target_percent": 1.0,
     "target_max": 2.0,
     "trailing_stop_loss": false,
-    "max_trades_per_day": 5,
+    "max_trades_per_day": 2,
     "rsi_oversold": 40,
     "rsi_overbought": 70
   },

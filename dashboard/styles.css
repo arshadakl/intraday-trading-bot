@@ -1979,3 +1979,232 @@ body {
 .nifty-interval-btn.bg-accent:hover {
   background: rgb(0, 122, 245);
 }
+
+/* ==================== FullCalendar Dark Theme ==================== */
+
+/* Container */
+#bt-fullcalendar {
+  --fc-border-color: rgba(56, 56, 58, 0.5);
+  --fc-page-bg-color: transparent;
+  --fc-neutral-bg-color: rgba(44, 44, 46, 0.3);
+  --fc-today-bg-color: rgba(10, 132, 255, 0.08);
+  --fc-event-bg-color: transparent;
+  --fc-event-border-color: transparent;
+  --fc-small-font-size: 0.8em;
+  padding: 8px;
+}
+
+/* Toolbar (month title + prev/next/today buttons) */
+#bt-fullcalendar .fc-toolbar {
+  padding: 12px 8px;
+  margin-bottom: 0 !important;
+}
+
+#bt-fullcalendar .fc-toolbar-title {
+  font-size: 1.25rem !important;
+  font-weight: 800 !important;
+  color: #f5f5f7 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+#bt-fullcalendar .fc-button {
+  background: rgba(44, 44, 46, 0.6) !important;
+  border: 1px solid rgba(56, 56, 58, 0.6) !important;
+  color: #f5f5f7 !important;
+  border-radius: 10px !important;
+  padding: 6px 14px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  text-transform: capitalize !important;
+  transition: all 0.2s ease !important;
+  box-shadow: none !important;
+}
+
+#bt-fullcalendar .fc-button:hover {
+  background: rgba(58, 58, 60, 0.8) !important;
+  border-color: rgba(86, 86, 88, 0.6) !important;
+}
+
+#bt-fullcalendar .fc-button-active,
+#bt-fullcalendar .fc-button:active {
+  background: rgba(10, 132, 255, 0.2) !important;
+  border-color: rgba(10, 132, 255, 0.4) !important;
+  color: #0a84ff !important;
+}
+
+#bt-fullcalendar .fc-button-group {
+  gap: 4px;
+}
+
+#bt-fullcalendar .fc-button-group .fc-button {
+  border-radius: 10px !important;
+}
+
+/* Day header row (Sun, Mon, Tue ...) */
+#bt-fullcalendar .fc-col-header-cell {
+  background: rgba(29, 29, 31, 0.6);
+  border-color: rgba(56, 56, 58, 0.4);
+  padding: 10px 0 !important;
+}
+
+#bt-fullcalendar .fc-col-header-cell-cushion {
+  color: #86868b !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
+  text-decoration: none !important;
+  cursor: default !important;
+}
+
+/* Day cells */
+#bt-fullcalendar .fc-daygrid-day {
+  border-color: rgba(56, 56, 58, 0.35) !important;
+  transition: background 0.2s ease;
+  min-height: 90px !important;
+}
+
+#bt-fullcalendar .fc-daygrid-day:hover {
+  background: rgba(44, 44, 46, 0.4) !important;
+}
+
+#bt-fullcalendar .fc-daygrid-day-frame {
+  min-height: 90px !important;
+  padding: 4px !important;
+}
+
+/* Day numbers */
+#bt-fullcalendar .fc-daygrid-day-number {
+  color: #c7c7cc !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  padding: 6px 8px !important;
+  text-decoration: none !important;
+  cursor: pointer !important;
+}
+
+/* Today highlight */
+#bt-fullcalendar .fc-day-today {
+  background: rgba(10, 132, 255, 0.08) !important;
+}
+
+#bt-fullcalendar .fc-day-today .fc-daygrid-day-number {
+  color: #0a84ff !important;
+  background: rgba(10, 132, 255, 0.15);
+  border-radius: 8px;
+  font-weight: 900 !important;
+}
+
+/* Weekend / Other month cells */
+#bt-fullcalendar .fc-day-other .fc-daygrid-day-number {
+  color: rgba(134, 134, 139, 0.3) !important;
+}
+
+#bt-fullcalendar .fc-day-sat,
+#bt-fullcalendar .fc-day-sun {
+  background: rgba(29, 29, 31, 0.3) !important;
+}
+
+#bt-fullcalendar .fc-day-sat .fc-daygrid-day-number,
+#bt-fullcalendar .fc-day-sun .fc-daygrid-day-number {
+  color: rgba(134, 134, 139, 0.5) !important;
+}
+
+/* Events (backtest results) */
+#bt-fullcalendar .fc-daygrid-event {
+  border: none !important;
+  border-radius: 6px !important;
+  padding: 2px 6px !important;
+  margin: 1px 3px !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  cursor: pointer !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+#bt-fullcalendar .fc-daygrid-event:hover {
+  transform: scale(1.03);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+#bt-fullcalendar .fc-event-title {
+  font-weight: 800 !important;
+}
+
+/* Profit event */
+#bt-fullcalendar .fc-event.bt-profit {
+  background: rgba(52, 199, 89, 0.15) !important;
+  color: #34c759 !important;
+  border-left: 3px solid #34c759 !important;
+}
+
+/* Loss event */
+#bt-fullcalendar .fc-event.bt-loss {
+  background: rgba(255, 69, 58, 0.15) !important;
+  color: #ff453a !important;
+  border-left: 3px solid #ff453a !important;
+}
+
+/* No trades event */
+#bt-fullcalendar .fc-event.bt-neutral {
+  background: rgba(255, 159, 10, 0.15) !important;
+  color: #ff9f0a !important;
+  border-left: 3px solid #ff9f0a !important;
+}
+
+/* Scrollbar inside calendar */
+#bt-fullcalendar .fc-scroller::-webkit-scrollbar {
+  width: 4px;
+}
+
+#bt-fullcalendar .fc-scroller::-webkit-scrollbar-thumb {
+  background: rgba(86, 86, 88, 0.5);
+  border-radius: 4px;
+}
+
+/* Remove the table cell inline styles that FullCalendar sets */
+#bt-fullcalendar table {
+  border-collapse: collapse;
+}
+
+#bt-fullcalendar th,
+#bt-fullcalendar td {
+  border-color: rgba(56, 56, 58, 0.35) !important;
+}
+
+/* Mobile responsive */
+@media (max-width: 640px) {
+  #bt-fullcalendar .fc-toolbar {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #bt-fullcalendar .fc-toolbar-title {
+    font-size: 1rem !important;
+  }
+
+  #bt-fullcalendar .fc-button {
+    padding: 5px 10px !important;
+    font-size: 11px !important;
+  }
+
+  #bt-fullcalendar .fc-daygrid-day-frame {
+    min-height: 60px !important;
+  }
+
+  #bt-fullcalendar .fc-daygrid-day-number {
+    font-size: 11px !important;
+    padding: 3px 5px !important;
+  }
+
+  #bt-fullcalendar .fc-daygrid-event {
+    font-size: 9px !important;
+    padding: 1px 3px !important;
+    margin: 1px 1px !important;
+  }
+
+  #bt-fullcalendar .fc-col-header-cell-cushion {
+    font-size: 9px !important;
+  }
+}
