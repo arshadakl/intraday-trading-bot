@@ -215,24 +215,51 @@ class AngelOneClient:
             return None
     
     def _get_nifty_index_quote(self) -> Optional[Dict]:
-        """Get NIFTY index quote from NSE pre-open data"""
+        """Get NIFTY index quote from AngelOne API (ltpData endpoint)"""
         try:
-            from src.analysis.nse_preopen_fetcher import get_nse_preopen_fetcher
-            fetcher = get_nse_preopen_fetcher(segment='nifty')
-            data = fetcher.fetch_final_preopen_data(wait_if_not_ready=False)
-            if data and len(data) > 0:
-                nifty_info = data[0]
+            # Use ltpData API directly for Nifty index — same endpoint as stocks
+            result = self.smart_api.ltpData("NSE", "NIFTY", "99926000")
+            if result and result.get("status"):
+                data = result.get("data", {})
                 return {
                     "symbol": "NIFTY",
                     "token": "99926000",
-                    "ltp": nifty_info.get('iep'),
-                    "open": nifty_info.get('open'),
-                    "high": nifty_info.get('high'),
-                    "low": nifty_info.get('low'),
-                    "previousClose": nifty_info.get('previousClose') or nifty_info.get('pp'),
+                    "ltp": data.get("ltp"),
+                    "open": data.get("open"),
+                    "high": data.get("high"),
+                    "low": data.get("low"),
+                    "close": data.get("close"),
+                    "previousClose": data.get("close"),  # SmartAPI returns prev close as "close"
+                }
+            logger.warning(f"Nifty ltpData returned no data: {result}")
+        except Exception as e:
+            logger.warning(f"Nifty ltpData API failed: {e}")
+
+        # Fallback: Use daily historical candle to get yesterday's close
+        try:
+            daily_data = self.get_historical_data(
+                symbol="NIFTY",
+                token="99926000",
+                interval="ONE_DAY",
+                days=5,
+                exchange="NSE"
+            )
+            if daily_data and len(daily_data) >= 2:
+                yesterday = daily_data[-2]
+                today = daily_data[-1]
+                return {
+                    "symbol": "NIFTY",
+                    "token": "99926000",
+                    "ltp": today.get("close"),
+                    "open": today.get("open"),
+                    "high": today.get("high"),
+                    "low": today.get("low"),
+                    "close": yesterday.get("close"),
+                    "previousClose": yesterday.get("close"),
                 }
         except Exception as e:
-            logger.error(f"Error fetching NIFTY from NSE: {e}")
+            logger.error(f"Nifty historical fallback also failed: {e}")
+
         return None
     
     def get_historical_data(
@@ -378,6 +405,8 @@ class AngelOneClient:
         Get historical candle data for a specific date.
         Used by the backtester to fetch data for past dates.
         
+        Includes retry logic for rate limit errors (AB1004).
+        
         Args:
             symbol: Stock symbol (e.g., "SBIN-EQ")
             token: Angel One symbol token
@@ -413,40 +442,59 @@ class AngelOneClient:
         
         to_str = date_str + " 15:30"
         
-        try:
-            params = {
-                "exchange": exchange,
-                "symboltoken": str(token),
-                "interval": interval,
-                "fromdate": from_str,
-                "todate": to_str,
-            }
-            
-            data = self.historical_api.getCandleData(params)
-            
-            if data and data.get("status") and data.get("data"):
-                candles = data["data"]
-                result = [
-                    {
-                        "timestamp": candle[0],
-                        "open": float(candle[1]),
-                        "high": float(candle[2]),
-                        "low": float(candle[3]),
-                        "close": float(candle[4]),
-                        "volume": int(candle[5]),
-                    }
-                    for candle in candles
-                ]
-                return result
-            
-            error_code = data.get("errorcode", "") if data else ""
-            if error_code:
-                logger.debug(f"📊 Backtest data fetch for {symbol}/{date_str}: {error_code}")
-            return None
-            
-        except Exception as e:
-            logger.debug(f"📊 Backtest fetch error for {symbol}/{date_str}: {e}")
-            return None
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                params = {
+                    "exchange": exchange,
+                    "symboltoken": str(token),
+                    "interval": interval,
+                    "fromdate": from_str,
+                    "todate": to_str,
+                }
+                
+                data = self.historical_api.getCandleData(params)
+                
+                if data and data.get("status") and data.get("data"):
+                    candles = data["data"]
+                    result = [
+                        {
+                            "timestamp": candle[0],
+                            "open": float(candle[1]),
+                            "high": float(candle[2]),
+                            "low": float(candle[3]),
+                            "close": float(candle[4]),
+                            "volume": int(candle[5]),
+                        }
+                        for candle in candles
+                    ]
+                    return result
+                
+                error_code = data.get("errorcode", "") if data else ""
+                
+                # Retry on rate limit (AB1004) with exponential backoff
+                if error_code == "AB1004" or (data and "TooManyRequests" in str(data.get("message", ""))):
+                    if attempt < max_retries - 1:
+                        wait_time = 2 ** (attempt + 1)  # 2s, 4s, 8s
+                        logger.debug(f"⏳ Rate limit for {symbol}/{date_str} — waiting {wait_time}s (attempt {attempt+1}/{max_retries})")
+                        time_mod.sleep(wait_time)
+                        continue
+                    else:
+                        logger.warning(f"❌ {symbol}/{date_str}: Rate limited after {max_retries} attempts")
+                        return None
+                
+                if error_code:
+                    logger.debug(f"📊 Backtest data fetch for {symbol}/{date_str}: {error_code}")
+                return None
+                
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    time_mod.sleep(2)
+                    continue
+                logger.debug(f"📊 Backtest fetch error for {symbol}/{date_str}: {e}")
+                return None
+        
+        return None
 
     def get_previous_day_ohlc(self, symbol: str, token: str,
                               exchange: str = "NSE") -> Optional[Dict]:

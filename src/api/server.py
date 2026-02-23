@@ -819,49 +819,62 @@ def create_app() -> Flask:
         """Get Nifty 50 gap status - whether market opened gap up, gap down, or flat"""
         from pathlib import Path
         import json
+        import time as time_mod
         
         try:
             # Get Nifty tracker data
             from src.analysis.nifty_tracker import get_nifty_tracker
             nifty_tracker = get_nifty_tracker()
             
-            # Try to get Nifty previous close from AngelOne API
+            # Try to get Nifty previous close from AngelOne API (with retry)
             nifty_prev_close = None
             nifty_open_from_api = None
+            data_source = 'none'
             
-            try:
-                bot, err = get_bot()
-                if bot and hasattr(bot, 'angel_client') and bot.angel_client:
-                    # Get full quote for Nifty index
-                    quote = bot.angel_client.get_quote(
-                        symbol="NIFTY",
-                        token="99926000",
-                        exchange="NSE"
-                    )
-                    if quote and quote.get('data'):
-                        nifty_data = quote['data']
-                        # previousClose is the previous day's close
-                        nifty_prev_close = nifty_data.get('previousClose') or nifty_data.get('prev_close')
-                        # open is today's open price
-                        nifty_open_from_api = nifty_data.get('open')
-                        logger.debug(f"Nifty from API - Prev Close: {nifty_prev_close}, Open: {nifty_open_from_api}")
-            except Exception as e:
-                logger.debug(f"Could not fetch Nifty quote from API: {e}")
+            # --- Source 1: Fresh API fetch with retry (preferred) ---
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    bot, err = get_bot()
+                    if bot and hasattr(bot, 'angel_client') and bot.angel_client:
+                        quote = bot.angel_client.get_quote(
+                            symbol="NIFTY",
+                            token="99926000",
+                            exchange="NSE"
+                        )
+                        # get_quote returns flat dict directly (NOT wrapped in 'data')
+                        if quote:
+                            nifty_prev_close = quote.get('previousClose') or quote.get('close')
+                            nifty_open_from_api = quote.get('open')
+                            if nifty_prev_close:
+                                data_source = 'angel_api'
+                                logger.debug(f"Nifty from API (attempt {attempt+1}) - Prev Close: {nifty_prev_close}, Open: {nifty_open_from_api}")
+                                break  # Success — stop retrying
+                except Exception as e:
+                    logger.debug(f"Nifty API attempt {attempt+1}/{max_retries} failed: {e}")
+                
+                if attempt < max_retries - 1:
+                    time_mod.sleep(1)  # Wait before retry
             
-            # Fallback: Check if we have cached Nifty data in nifty50.json index field
+            # --- Source 2: nifty50.json index field (populated by updater) ---
             if nifty_prev_close is None:
                 try:
                     nifty50_path = Path("config/nifty50.json")
                     if nifty50_path.exists():
                         with open(nifty50_path, 'r', encoding='utf-8') as f:
                             data = json.load(f)
-                        # Check index field first (new structure)
                         index_data = data.get('index', {})
                         if index_data.get('prev_close'):
                             nifty_prev_close = index_data.get('prev_close')
                             nifty_open_from_api = index_data.get('open') or index_data.get('iep')
+                            data_source = 'nifty50_json'
                 except Exception as e:
                     logger.debug(f"Could not read Nifty from config: {e}")
+            
+            # --- Source 3: NiftyIndexTracker (set during market open update) ---
+            if nifty_prev_close is None and nifty_tracker.prev_close:
+                nifty_prev_close = nifty_tracker.prev_close
+                data_source = 'nifty_tracker'
             
             # Calculate gap using available data
             # Priority: API data > nifty_tracker data
@@ -884,6 +897,11 @@ def create_app() -> Flask:
                     gap_status = "GAP_DOWN"
                 else:
                     gap_status = "FLAT"
+            else:
+                logger.warning(
+                    f"⚠️ Nifty gap data incomplete — prev_close={prev_close}, open={open_price} "
+                    f"→ defaulting to FLAT (data_source={data_source})"
+                )
             
             # Get current change from open (using nifty_tracker for real-time data)
             current_change_pct = nifty_tracker.get_change_percent() if nifty_tracker.current_price else 0.0
@@ -906,7 +924,7 @@ def create_app() -> Flask:
                 'day_high': nifty_tracker.day_high,
                 'day_low': nifty_tracker.day_low,
                 'timestamp': nifty_tracker.last_update.isoformat() if nifty_tracker.last_update else None,
-                'data_source': 'angel_api' if nifty_prev_close else 'tracker'
+                'data_source': data_source
             })
             
         except Exception as e:
@@ -1189,8 +1207,8 @@ def create_app() -> Flask:
                 else:
                     failed += 1
                 
-                # Throttle: 100ms between requests to avoid rate limits
-                time_mod.sleep(0.1)
+                # Throttle: 300ms between requests to avoid rate limits
+                time_mod.sleep(0.3)
             
             logger.info(f"📊 Backtest data fetched: {fetched} stocks OK, {failed} failed")
             

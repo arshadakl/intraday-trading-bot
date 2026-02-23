@@ -124,6 +124,8 @@ class Nifty50Updater:
         The order is based on pre-open market activity and is critical for the 
         3-minute strategy which uses this ordering for stock selection.
         
+        Enforces exactly 50 stocks (filters invalid entries).
+        
         Args:
             nse_stocks: Optional pre-fetched NSE stock data. If None, will fetch from API.
             
@@ -220,6 +222,16 @@ class Nifty50Updater:
             
             updated_stocks.append(stock_data)
         
+        # ---- Enforce exactly 50 stocks ----
+        # NSE API may return >50 stocks; keep only the first 50 valid ones
+        if len(updated_stocks) > 50:
+            logger.warning(f"⚠️ NSE returned {len(updated_stocks)} stocks — trimming to 50")
+            updated_stocks = updated_stocks[:50]
+        
+        # Re-rank after trimming
+        for idx, stock in enumerate(updated_stocks):
+            stock['rank'] = idx + 1
+        
         result['missing_tokens'] = missing_tokens
         result['total_stocks'] = len(updated_stocks)
         
@@ -246,6 +258,114 @@ class Nifty50Updater:
             logger.info(f"✅ Nifty 50 list updated: {len(updated_stocks)} stocks (order preserved)")
         
         return result['success'], result
+    
+    def fetch_nifty_index_data(self, max_retries: int = 3, retry_delay: float = 2.0) -> Dict:
+        """
+        Fetch Nifty index-level data (prev_close, open) from AngelOne API.
+        
+        This is called at 9:15 AM to get fresh data for gap calculation.
+        ALWAYS fetches from live API — never trusts stored JSON.
+        
+        Retries on failure because Nifty gap status is critical.
+        
+        Args:
+            max_retries: Number of retry attempts (default 3)
+            retry_delay: Seconds between retries (default 2.0)
+            
+        Returns:
+            Dict with prev_close, open, ltp, gap_percent, gap_status
+        """
+        import time
+        
+        for attempt in range(max_retries):
+            try:
+                # Try AngelOne API
+                from src.broker.angel_client import AngelOneClient
+                # Get the bot's angel_client if available
+                angel_client = None
+                try:
+                    from src.core.bot import get_bot
+                    bot, err = get_bot()
+                    if bot and hasattr(bot, 'angel_client') and bot.angel_client:
+                        angel_client = bot.angel_client
+                except Exception:
+                    pass
+                
+                if angel_client and angel_client.is_authenticated:
+                    quote = angel_client.get_quote(
+                        symbol="NIFTY",
+                        token="99926000",
+                        exchange="NSE"
+                    )
+                    if quote:
+                        prev_close = quote.get('previousClose') or quote.get('close')
+                        open_price = quote.get('open')
+                        ltp = quote.get('ltp')
+                        
+                        if prev_close and float(prev_close) > 0:
+                            prev_close = float(prev_close)
+                            open_price = float(open_price) if open_price else None
+                            ltp = float(ltp) if ltp else None
+                            
+                            gap_percent = 0.0
+                            gap_status = "FLAT"
+                            if open_price and open_price > 0:
+                                gap_percent = ((open_price - prev_close) / prev_close) * 100
+                                if gap_percent > 0.2:
+                                    gap_status = "GAP_UP"
+                                elif gap_percent < -0.2:
+                                    gap_status = "GAP_DOWN"
+                            
+                            index_data = {
+                                "symbol": "NIFTY",
+                                "token": "99926000",
+                                "prev_close": round(prev_close, 2),
+                                "open": round(open_price, 2) if open_price else None,
+                                "ltp": round(ltp, 2) if ltp else None,
+                                "gap_percent": round(gap_percent, 2),
+                                "gap_status": gap_status,
+                                "_fetched_at": datetime.now().isoformat(),
+                                "_source": "angel_api"
+                            }
+                            
+                            logger.info(
+                                f"✅ Nifty index data fetched: "
+                                f"PrevClose={prev_close:.2f} Open={open_price} "
+                                f"Gap={gap_percent:+.2f}% ({gap_status})"
+                            )
+                            
+                            # Save to nifty50.json index field
+                            self._save_index_data(index_data)
+                            return index_data
+                
+                logger.warning(
+                    f"⚠️ Nifty index fetch attempt {attempt + 1}/{max_retries} failed "
+                    f"— {'retrying...' if attempt < max_retries - 1 else 'no more retries'}"
+                )
+                
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    
+            except Exception as e:
+                logger.warning(
+                    f"⚠️ Nifty index fetch attempt {attempt + 1}/{max_retries} error: {e} "
+                    f"— {'retrying...' if attempt < max_retries - 1 else 'no more retries'}"
+                )
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+        
+        logger.error("❌ Failed to fetch Nifty index data after all retries")
+        return {"symbol": "NIFTY", "token": "99926000", "prev_close": None, "open": None}
+    
+    def _save_index_data(self, index_data: Dict) -> None:
+        """Save index data to the index field in nifty50.json"""
+        try:
+            config = self.load_existing_config()
+            config['index'] = index_data
+            self.save_config(config)
+            logger.info("✅ Nifty index data saved to nifty50.json")
+        except Exception as e:
+            logger.error(f"❌ Failed to save index data: {e}")
     
     def get_update_summary(self, result: Dict) -> str:
         """Generate a human-readable update summary."""
@@ -364,8 +484,9 @@ def update_nifty50_at_market_open() -> bool:
     
     This function:
     1. Fetches the latest Nifty 50 stock list from NSE pre-open API
-    2. Updates config/nifty50.json with the new list
+    2. Updates config/nifty50.json with the new list (max 50 stocks)
     3. Fetches and fills in missing instrument tokens from Angel One
+    4. Fetches Nifty index data (prev_close, open) for gap calculation
     
     Returns:
         True if update was successful
@@ -397,7 +518,22 @@ def update_nifty50_at_market_open() -> bool:
                 except Exception as e:
                     logger.warning(f"⚠️ Could not fetch tokens: {e}")
             
-            # Generate Daily Watchlist for 3-Minute Strategy
+            # Step 2: Fetch Nifty index data (prev_close, open) with retry
+            logger.info("🔄 Step 2: Fetching Nifty index data for gap calculation...")
+            index_data = updater.fetch_nifty_index_data(max_retries=3, retry_delay=2.0)
+            
+            if index_data.get('prev_close'):
+                # Also update the NiftyIndexTracker singleton
+                try:
+                    from src.analysis.nifty_tracker import get_nifty_tracker
+                    tracker = get_nifty_tracker()
+                    tracker.set_prev_close(index_data['prev_close'])
+                except Exception as e:
+                    logger.debug(f"Could not update nifty_tracker: {e}")
+            else:
+                logger.warning("⚠️ Nifty index prev_close not available — gap analysis may be FLAT")
+            
+            # Step 3: Generate Daily Watchlist for 3-Minute Strategy
             try:
                 from src.analysis.daily_watchlist import get_watchlist_manager
                 manager = get_watchlist_manager()
@@ -416,6 +552,20 @@ def update_nifty50_at_market_open() -> bool:
         import traceback
         traceback.print_exc()
         return False
+
+
+def update_nifty_index_gap_data(max_retries: int = 3) -> Dict:
+    """
+    Standalone function to fetch fresh Nifty index gap data at 9:15 AM.
+    
+    ALWAYS fetches from live API — never trusts stored JSON.
+    Retries on failure because Nifty gap status is critical.
+    
+    Returns:
+        Dict with prev_close, open, gap_percent, gap_status
+    """
+    updater = Nifty50Updater()
+    return updater.fetch_nifty_index_data(max_retries=max_retries)
 
 
 # CLI support
