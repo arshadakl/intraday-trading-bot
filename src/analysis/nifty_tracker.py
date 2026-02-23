@@ -28,6 +28,7 @@ class NiftyIndexTracker:
     def __init__(self):
         # Daily state
         self.open_price: Optional[float] = None
+        self.prev_close: Optional[float] = None  # Yesterday's closing price
         self.current_price: Optional[float] = None
         self.day_high: Optional[float] = None
         self.day_low: Optional[float] = None
@@ -44,8 +45,9 @@ class NiftyIndexTracker:
         self.first_15min_low: Optional[float] = None
     
     def reset_daily(self) -> None:
-        """Reset all state for new trading day"""
+        """Reset all state for new trading day (preserves prev_close)"""
         self.open_price = None
+        # NOTE: Do NOT reset prev_close — it's needed for gap calculation
         self.current_price = None
         self.day_high = None
         self.day_low = None
@@ -57,6 +59,27 @@ class NiftyIndexTracker:
         self.first_15min_high = None
         self.first_15min_low = None
         logger.debug("📊 Nifty tracker reset for new day")
+    
+    def set_prev_close(self, value: float) -> None:
+        """Set yesterday's closing price for gap calculation"""
+        if value and value > 0:
+            self.prev_close = value
+            logger.info(f"📊 Nifty prev_close set: {self.prev_close:.2f}")
+    
+    def get_gap_percent(self) -> float:
+        """Get opening gap percentage: ((open - prev_close) / prev_close) * 100"""
+        if self.prev_close and self.prev_close > 0 and self.open_price:
+            return ((self.open_price - self.prev_close) / self.prev_close) * 100
+        return 0.0
+    
+    def get_gap_status(self, threshold: float = 0.2) -> str:
+        """Get gap status: GAP_UP, GAP_DOWN, or FLAT (based on threshold %)"""
+        gap_pct = self.get_gap_percent()
+        if gap_pct > threshold:
+            return "GAP_UP"
+        elif gap_pct < -threshold:
+            return "GAP_DOWN"
+        return "FLAT"
     
     def update(self, price_data: Dict) -> None:
         """
@@ -193,12 +216,15 @@ class NiftyIndexTracker:
         return {
             "symbol": self.NIFTY_SYMBOL,
             "token": self.NIFTY_TOKEN,
+            "prev_close": self.prev_close,
             "open": self.open_price,
             "current": self.current_price,
             "high": self.day_high,
             "low": self.day_low,
             "trend": self.trend,
             "trend_strength": self.trend_strength,
+            "gap_pct": round(self.get_gap_percent(), 2),
+            "gap_status": self.get_gap_status(),
             "change_pct": self.get_change_percent(),
             "change_pts": self.get_change_points(),
             "range_pct": self.get_intraday_range_percent(),

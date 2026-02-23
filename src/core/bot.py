@@ -1366,18 +1366,41 @@ class TradingBot:
             if not watchlist:
                 return
 
-            # --- Calculate Nifty gap % ---
+            # --- Calculate Nifty gap % (FRESH API fetch with retry) ---
             nifty_gap_percent = 0.0
             try:
-                with open("config/nifty50.json", "r", encoding="utf-8") as f:
-                    nifty_data = json.load(f)
-                idx = nifty_data.get("index", {})
-                prev_close = idx.get("prev_close")
-                open_price = idx.get("open") or idx.get("iep")
-                if prev_close and open_price:
-                    nifty_gap_percent = ((float(open_price) - float(prev_close)) / float(prev_close)) * 100
-            except Exception:
-                nifty_gap_percent = 0.0
+                # Always fetch fresh from API at 9:15 AM — DO NOT trust stored JSON
+                from src.utils.nifty50_updater import update_nifty_index_gap_data
+                index_data = update_nifty_index_gap_data(max_retries=3)
+                
+                if index_data and index_data.get('prev_close') and index_data.get('gap_percent') is not None:
+                    nifty_gap_percent = index_data['gap_percent']
+                    logger.info(
+                        f"📊 Nifty gap from API: {nifty_gap_percent:+.2f}% "
+                        f"({index_data.get('gap_status', 'FLAT')}) | "
+                        f"PrevClose={index_data.get('prev_close')} Open={index_data.get('open')}"
+                    )
+                else:
+                    # Last resort: try stored JSON (may have been populated by earlier update)
+                    try:
+                        with open("config/nifty50.json", "r", encoding="utf-8") as f:
+                            nifty_data = json.load(f)
+                        idx = nifty_data.get("index", {})
+                        prev_close = idx.get("prev_close")
+                        open_price = idx.get("open") or idx.get("iep")
+                        if prev_close and open_price:
+                            nifty_gap_percent = ((float(open_price) - float(prev_close)) / float(prev_close)) * 100
+                            logger.info(f"📊 Nifty gap from stored JSON: {nifty_gap_percent:+.2f}%")
+                        else:
+                            logger.warning(
+                                "⚠️ Nifty gap data unavailable from both API and JSON — "
+                                "defaulting to FLAT (gap=0.0%). "
+                                "This will affect stock direction assignment!"
+                            )
+                    except Exception:
+                        logger.warning("⚠️ Nifty gap: all sources failed — defaulting to FLAT (0.0%)")
+            except Exception as e:
+                logger.warning(f"⚠️ Nifty gap calculation error: {e} — defaulting to 0.0%")
 
             # --- Filter watchlist based on gap ---
             strategy_params = self.config.get('strategies.three_minute.params', {})
