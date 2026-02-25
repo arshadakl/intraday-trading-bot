@@ -44,6 +44,8 @@ class RiskManager:
         # Calculate limits
         self.max_daily_loss = self.trading_capital * (self.max_daily_loss_percent / 100)
         self.max_position_size = self.trading_capital * (self.max_position_size_percent / 100)
+        # Spam guards
+        self._max_trades_alerted = False
         
         logger.info(
             f"💰 Risk Manager initialized: "
@@ -78,7 +80,9 @@ class RiskManager:
         # Check 2: Maximum trades per day
         if self.daily_trades >= self.max_trades_per_day:
             reason = f"Max trades per day reached ({self.daily_trades}/{self.max_trades_per_day})"
-            logger.warning(f"🚫 {reason}")
+            if not self._max_trades_alerted:
+                logger.warning(f"🚫 {reason}")
+                self._max_trades_alerted = True
             return False, reason
         
         # Check 3: Market hours (IST)
@@ -274,6 +278,7 @@ class RiskManager:
         self.daily_trades = 0
         self.daily_wins = 0
         self.daily_losses = 0
+        self._max_trades_alerted = False
         logger.info("🔄 Daily risk counters reset")
     
     def update_capital(self, new_capital: float) -> None:
