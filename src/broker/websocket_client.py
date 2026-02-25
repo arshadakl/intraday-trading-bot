@@ -27,6 +27,7 @@ class AngelWebSocket:
         self.sws = None
         self.is_connected = False
         self.subscribed_tokens: List[Dict] = []
+        self._symbol_map: Dict[str, str] = {}
         
         # Callbacks
         self.on_price_update: Optional[Callable[[str, Dict], None]] = None
@@ -86,8 +87,12 @@ class AngelWebSocket:
             else:
                 data = message
             
-            # Extract token and price info
-            token = str(data.get("token", ""))
+            # Extract token and price info (SmartWebSocketV2 may send 'token' or a 'tokens' list)
+            token_field = data.get("token")
+            if not token_field and isinstance(data.get("tokens"), list) and data["tokens"]:
+                token_field = data["tokens"][0]
+
+            token = str(token_field or "")
             
             if not token:
                 return
@@ -183,15 +188,17 @@ class AngelWebSocket:
         self._reconnect_attempts = 0
         logger.info("🔄 WebSocket reconnection counter reset")
     
-    def subscribe(self, tokens: List[Dict]) -> bool:
+    def subscribe(self, tokens: List[Dict], symbol_map: Dict[str, str] = None) -> bool:
         """
         Subscribe to stock tokens for real-time data.
         
         Args:
             tokens: List of dicts with 'exchange_type', 'token' keys
                     e.g., [{'exchange_type': 1, 'token': '2885'}]
+            symbol_map: Optional mapping token -> symbol for quick lookups
         """
         self.subscribed_tokens = tokens
+        self._symbol_map = {str(k): v for k, v in (symbol_map or {}).items()}
         
         if self.is_connected:
             return self._subscribe_tokens()
@@ -271,8 +278,12 @@ class AngelWebSocket:
     
     def _get_symbol_for_token(self, token: str) -> str:
         """Get symbol name for a token (from subscribed tokens)"""
+        token = str(token)
+        if token in self._symbol_map:
+            return self._symbol_map[token]
+
         for t in self.subscribed_tokens:
-            if t.get('token') == token:
+            if str(t.get('token')) == token:
                 return t.get('symbol', token)
         logger.warning(f"⚠️ No symbol mapping found for token: {token}")
         return token

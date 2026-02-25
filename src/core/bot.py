@@ -1488,11 +1488,12 @@ class TradingBot:
         tokens = [
             {
                 'exchange_type': 1,  # NSE
-                'token': stock['token'],
+                'token': str(stock['token']),
                 'symbol': stock['symbol']
             }
             for stock in self.selected_stocks
         ]
+        symbol_map = {str(stock['token']): stock['symbol'] for stock in self.selected_stocks}
         
         # Use market_api_key for WebSocket
         self.websocket = AngelWebSocket(
@@ -1503,7 +1504,7 @@ class TradingBot:
         )
         
         self.websocket.on_price_update = self._on_price_update
-        self.websocket.subscribe(tokens)
+        self.websocket.subscribe(tokens, symbol_map)
         self.websocket.connect()
         
         logger.info(f"ðŸ“¡ WebSocket monitoring started for {len(tokens)} stocks")
