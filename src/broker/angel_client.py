@@ -30,7 +30,8 @@ class AngelOneClient:
         
         # Cache for historical data (key: (symbol, token, interval), value: (data, timestamp))
         self._hist_cache: Dict[tuple, tuple] = {}
-        self._hist_cache_ttl = 60  # Cache TTL in seconds
+        # Keep intraday responses around for a full candle (3 minutes) to avoid hammering API
+        self._hist_cache_ttl = 180
         
         # Load API keys for different purposes
         self.trading_api_key = os.getenv("ANGEL_TRADING_API_KEY") or os.getenv("ANGEL_API_KEY")
@@ -315,25 +316,66 @@ class AngelOneClient:
             logger.warning(f"⚠️ {symbol}: Invalid interval '{interval}'. Using FIFTEEN_MINUTE.")
             interval = "FIFTEEN_MINUTE"
         
+        # Map SmartAPI interval to minutes for boundary rounding
+        interval_minutes = {
+            "ONE_MINUTE": 1,
+            "THREE_MINUTE": 3,
+            "FIVE_MINUTE": 5,
+            "TEN_MINUTE": 10,
+            "FIFTEEN_MINUTE": 15,
+            "THIRTY_MINUTE": 30,
+            "ONE_HOUR": 60,
+        }
+
+        def _last_completed_candle(now_dt: datetime) -> datetime:
+            """Return the timestamp of the last completed candle (IST, floored to interval)."""
+            if interval == "ONE_DAY":
+                return now_dt
+
+            step = interval_minutes.get(interval, 1)
+            market_open = now_dt.replace(hour=9, minute=15, second=0, microsecond=0)
+            market_close = now_dt.replace(hour=15, minute=30, second=0, microsecond=0)
+
+            # Choose reference time: if before open, use previous trading day's close; if after close, use today's close.
+            if now_dt < market_open:
+                base = market_close - timedelta(days=1)
+            elif now_dt > market_close:
+                base = market_close
+            else:
+                base = now_dt
+
+            # Roll back weekends to the last weekday close
+            while base.weekday() >= 5:  # Saturday/Sunday
+                base = base - timedelta(days=1)
+                base = base.replace(hour=15, minute=30, second=0, microsecond=0)
+
+            # Floor to the interval boundary and ensure the candle is complete
+            base = base - timedelta(minutes=base.minute % step,
+                                    seconds=base.second,
+                                    microseconds=base.microsecond)
+            if base >= now_dt:
+                base = base - timedelta(minutes=step)
+            return base
+
         for attempt in range(max_retries):
             try:
                 from src.utils.timezone import now_ist
-                to_date = now_ist()
+                to_date = _last_completed_candle(now_ist())
                 from_date = to_date - timedelta(days=days)
-                
+
                 # [FIX] Clamp times to market hours for intraday intervals
                 # SmartAPI returns no data for timestamps outside 9:00-15:30
                 if interval != "ONE_DAY":
-                    # Clamp to_date to max 15:30 of today
+                    # Clamp to_date to latest trading session close (already floored)
                     market_close_today = to_date.replace(hour=15, minute=30, second=0, microsecond=0)
                     if to_date > market_close_today:
                         to_date = market_close_today
-                    
-                    # Clamp from_date to 9:00 of that day
-                    from_date_market_open = from_date.replace(hour=9, minute=0, second=0, microsecond=0)
+
+                    # Clamp from_date to 9:15 of start day
+                    from_date_market_open = from_date.replace(hour=9, minute=15, second=0, microsecond=0)
                     if from_date < from_date_market_open:
                         from_date = from_date_market_open
-                
+
                 params = {
                     "exchange": exchange,
                     "symboltoken": str(token),
